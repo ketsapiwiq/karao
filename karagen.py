@@ -30,14 +30,14 @@ def separate_vocals(
     model: str = "htdemucs",
     device: str = "cpu",
 ):
-    import demucs
+    import separation
 
-    model_map = {m.value: m for m in demucs.DemucsModel}
-    demucs_model = model_map.get(model, demucs.DemucsModel.HTDEMUCS)
+    model_map = {m.value: m for m in separation.DemucsModel}
+    demucs_model = model_map.get(model, separation.DemucsModel.HTDEMUCS)
 
     output_folder = output_folder or os.path.dirname(os.path.abspath(audio_file))
 
-    result = demucs.separate_audio(audio_file, output_folder, demucs_model, device)
+    result = separation.separate_audio(audio_file, output_folder, demucs_model, device)
 
     if result.success:
         return result.vocals_path, result.instrumental_path

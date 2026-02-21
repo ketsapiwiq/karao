@@ -55,9 +55,9 @@ def create_karaoke(
         with open(lrc_file, "w", encoding="utf-8") as f:
             f.write(lrc_content)
 
-    import swiftf0
+    import pitch_detect
 
-    midi_path, kar_path = swiftf0.audio_to_midi(
+    midi_path, kar_path = pitch_detect.audio_to_midi(
         vocals_file, lrc_file=lrc_file, output_folder=output_folder, bpm=bpm
     )
 

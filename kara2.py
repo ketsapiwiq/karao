@@ -80,8 +80,8 @@ class KaraokeDisplay:
     def __init__(
         self,
         words: List[LyricWord],
-        screen_width: int = 2000,
-        screen_height: int = 1200,
+        screen_width: int = 1600,
+        screen_height: int = 600,
     ):
         self.words = words
         self.lines = group_into_lines(words)

@@ -22,64 +22,66 @@ from typing import List, Tuple
 class LyricWord:
     time: float
     word: str
+    line_idx: int = 0
 
 
-def parse_word_lrc(lrc_path: str) -> List[LyricWord]:
-    """Parse word-level LRC format like [00:14.88]J [00:15.38]'aime"""
+def parse_word_lrc(lrc_path: str) -> Tuple[List[LyricWord], int]:
+    """Parse word-level LRC format.
+    Each line in the LRC file is a display line.
+    Returns (words, num_lines)."""
     words = []
+    line_idx = 0
 
     with open(lrc_path, "r", encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if not line:
+        for lrc_line in f:
+            lrc_line = lrc_line.strip()
+            if not lrc_line:
                 continue
 
-            # Match all [mm:ss.xx]word patterns
             pattern = r"\[(\d+):(\d+\.?\d*)\]([^\[]*)"
-            matches = re.findall(pattern, line)
+            matches = re.findall(pattern, lrc_line)
 
+            line_has_words = False
             for match in matches:
                 mins, secs, word = match
                 time_sec = float(mins) * 60 + float(secs)
                 word = word.strip()
                 if word:
-                    words.append(LyricWord(time=time_sec, word=word))
+                    words.append(LyricWord(time=time_sec, word=word, line_idx=line_idx))
+                    line_has_words = True
 
-    return sorted(words, key=lambda w: w.time)
+            if line_has_words:
+                line_idx += 1
+
+    return sorted(words, key=lambda w: w.time), line_idx
 
 
-def group_into_lines(
-    words: List[LyricWord], gap_threshold: float = 2.0
-) -> List[Tuple[float, List[LyricWord]]]:
-    """Group words into lines based on time gaps"""
+def group_into_lines(words: List[LyricWord]) -> List[Tuple[float, List[LyricWord]]]:
+    """Group words by their line_idx into display lines."""
     if not words:
         return []
 
-    lines = []
-    current_line = [words[0]]
-    line_start = words[0].time
+    lines = {}
+    for word in words:
+        if word.line_idx not in lines:
+            lines[word.line_idx] = []
+        lines[word.line_idx].append(word)
 
-    for i in range(1, len(words)):
-        prev_word = words[i - 1]
-        curr_word = words[i]
+    result = []
+    for idx in sorted(lines.keys()):
+        line_words = lines[idx]
+        line_start = line_words[0].time
+        result.append((line_start, line_words))
 
-        # New line if gap > threshold
-        if curr_word.time - prev_word.time > gap_threshold:
-            lines.append((line_start, current_line))
-            current_line = [curr_word]
-            line_start = curr_word.time
-        else:
-            current_line.append(curr_word)
-
-    if current_line:
-        lines.append((line_start, current_line))
-
-    return lines
+    return result
 
 
 class KaraokeDisplay:
     def __init__(
-        self, words: List[LyricWord], screen_width: int = 1200, screen_height: int = 400
+        self,
+        words: List[LyricWord],
+        screen_width: int = 2000,
+        screen_height: int = 1200,
     ):
         self.words = words
         self.lines = group_into_lines(words)
@@ -187,13 +189,13 @@ class KaraokeDisplay:
 
 def play(audio_path: str, lrc_path: str):
     """Play audio with synchronized lyrics"""
-    words = parse_word_lrc(lrc_path)
+    words, num_lines = parse_word_lrc(lrc_path)
 
     if not words:
         print(f"No lyrics found in {lrc_path}")
         sys.exit(1)
 
-    print(f"Loaded {len(words)} words from {lrc_path}")
+    print(f"Loaded {len(words)} words in {num_lines} lines from {lrc_path}")
     print(f"First word: '{words[0].word}' at {words[0].time:.2f}s")
     print(f"Last word: '{words[-1].word}' at {words[-1].time:.2f}s")
 

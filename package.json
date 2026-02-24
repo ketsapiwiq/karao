@@ -1,0 +1,7 @@
+{
+  "name": "karaokeke",
+  "version": "1.0.0",
+  "dependencies": {
+    "better-sqlite3": "^12.6.2"
+  }
+}

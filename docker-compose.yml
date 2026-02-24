@@ -1,0 +1,31 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    ports:
+      - "3001:3001"
+    volumes:
+      - /mnt/gloubinours2:/mnt/gloubinours2:ro
+      - data:/data
+    environment:
+      - LRCLIB_DB=/mnt/gloubinours2/lrclib-db-dump-20260122T091251Z.sqlite3
+      - DATA_DIR=/data
+
+  web:
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - API_URL=http://api:3001
+    depends_on:
+      - api
+
+volumes:
+  data:
+
+networks:
+  default:
+    name: karaoke

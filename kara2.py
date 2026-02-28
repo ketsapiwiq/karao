@@ -91,7 +91,15 @@ class KaraokeDisplay:
         self.screen = pygame.display.set_mode((screen_width, screen_height))
         pygame.display.set_caption("Karaoke")
 
-        self.font = pygame.font.Font(None, 60)
+        font_names = [
+            "Noto Sans",
+            "Charis SIL",
+            "Gentium Plus",
+            "DejaVu Sans",
+            "Liberation Sans",
+            "Arial",
+        ]
+        self.font = pygame.font.SysFont(font_names, 60)
         self.active_color = (100, 100, 250)
         self.base_color = (250, 250, 250)
 

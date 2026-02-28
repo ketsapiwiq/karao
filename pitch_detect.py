@@ -42,6 +42,10 @@ def check_dependencies() -> Tuple[bool, str]:
         import pretty_midi
     except ImportError:
         missing.append("pretty_midi")
+    try:
+        import unidecode
+    except ImportError:
+        missing.append("unidecode")
 
     if missing:
         return False, f"pip install {' '.join(missing)}"
@@ -142,20 +146,37 @@ def lrc_to_segments(result, lrc_content: str) -> List[MidiSegment]:
     return segments
 
 
-def segments_to_midi(segments: List[MidiSegment], bpm: float, output_path: str) -> str:
+def segments_to_midi(
+    segments: List[MidiSegment],
+    bpm: float,
+    output_path: Optional[str] = None,
+    instrument_name: str = "Vocals",
+    program: int = 0,
+    is_drum: bool = False,
+    midi_data: Optional[object] = None,
+) -> object:
     import pretty_midi
     import librosa
     import unidecode
 
-    midi_data = pretty_midi.PrettyMIDI(initial_tempo=bpm)
-    instrument = pretty_midi.Instrument(program=0, name="Vocals")
+    if midi_data is None:
+        midi_data = pretty_midi.PrettyMIDI(initial_tempo=bpm)
+
+    instrument = pretty_midi.Instrument(
+        program=program, name=instrument_name, is_drum=is_drum
+    )
     velocity = 100
 
     for segment in segments:
         if segment.note != "REST":
-            note_number = librosa.note_to_midi(segment.note)
-            note = pretty_midi.Note(velocity, note_number, segment.start, segment.end)
-            instrument.notes.append(note)
+            try:
+                note_number = librosa.note_to_midi(segment.note)
+                note = pretty_midi.Note(
+                    velocity, note_number, segment.start, segment.end
+                )
+                instrument.notes.append(note)
+            except Exception:
+                continue
 
             if segment.word:
                 sanitized = unidecode.unidecode(segment.word)
@@ -164,8 +185,10 @@ def segments_to_midi(segments: List[MidiSegment], bpm: float, output_path: str) 
                 )
 
     midi_data.instruments.append(instrument)
-    midi_data.write(output_path)
-    return output_path
+
+    if output_path:
+        midi_data.write(output_path)
+    return midi_data
 
 
 def create_kar_file(segments: List[MidiSegment], bpm: float, output_path: str) -> str:
@@ -192,6 +215,121 @@ def create_kar_file(segments: List[MidiSegment], bpm: float, output_path: str) -
 
     midi_data.instruments.append(melody_track)
     midi_data.instruments.append(lyrics_track)
+    midi_data.write(output_path)
+    return output_path
+
+
+def clean_midi_instrument(instrument, min_duration=0.1, min_velocity=30):
+    """Remove short notes and low velocity noise from an instrument."""
+    cleaned_notes = []
+    for note in instrument.notes:
+        if (note.end - note.start) >= min_duration and note.velocity >= min_velocity:
+            cleaned_notes.append(note)
+    instrument.notes = cleaned_notes
+    return instrument
+
+
+def basic_pitch_to_midi(
+    audio_file: str,
+    midi_data: Optional[object] = None,
+    instrument_name: str = "Piano",
+    program: int = 0,
+) -> object:
+    from basic_pitch.inference import predict
+    import pretty_midi
+
+    print(f"Polyphonic transcription for {instrument_name} (High Quality Mode)...")
+    # Higher thresholds = cleaner output, fewer ghost notes
+    model_output, midi_data_bp, notes = predict(
+        audio_file,
+        onset_threshold=0.6,
+        frame_threshold=0.4,
+        minimum_note_length=120, # ms
+    )
+    
+    if midi_data_bp.instruments:
+        instr = midi_data_bp.instruments[0]
+        instr.name = instrument_name
+        instr.program = program
+        # Apply cleaning
+        instr = clean_midi_instrument(instr)
+        
+        if midi_data is None:
+            # Create new with correct BPM
+            # Note: predict() doesn't know our BPM, so we just take the notes
+            midi_data = pretty_midi.PrettyMIDI() 
+            midi_data.instruments.append(instr)
+        else:
+            midi_data.instruments.append(instr)
+            
+    return midi_data
+
+
+def multi_audio_to_midi(
+    stem_files: dict[str, str],
+    output_path: str,
+    bpm: float = 120.0,
+    fmin: float = 46.875,
+    fmax: float = 2093.75,
+    confidence_threshold: float = 0.9,
+) -> str:
+    import pretty_midi
+
+    midi_data = pretty_midi.PrettyMIDI(initial_tempo=bpm)
+
+    # Stem name to MIDI program (General MIDI)
+    program_map = {
+        "vocals": 0,  # Piano (often used for vocals in MIDI)
+        "bass": 33,  # Electric Bass (finger)
+        "guitar": 25,  # Acoustic Guitar (steel)
+        "piano": 0,  # Acoustic Grand Piano
+        "other": 48,  # String Ensemble 1
+    }
+
+    polyphonic_stems = ["guitar", "piano", "other"]
+
+    for stem_name, audio_file in stem_files.items():
+        stem_name_lower = stem_name.lower()
+        if not os.path.exists(audio_file):
+            print(f"Skipping missing stem: {stem_name} ({audio_file})")
+            continue
+
+        if stem_name_lower == "drums":
+            # For now, skip drums to avoid noise, or we could add a simple beat
+            print("Skipping drums in MIDI generation to avoid noise...")
+            continue
+
+        program = program_map.get(stem_name_lower, 0)
+        
+        if stem_name_lower in polyphonic_stems:
+            try:
+                midi_data = basic_pitch_to_midi(
+                    audio_file,
+                    midi_data=midi_data,
+                    instrument_name=stem_name.capitalize(),
+                    program=program
+                )
+            except Exception as e:
+                print(f"Error in basic-pitch for {stem_name}: {e}")
+        else:
+            # Monophonic for vocals and bass
+            print(f"Monophonic transcription for {stem_name}...")
+            try:
+                result = get_pitch_swiftf0(audio_file, fmin, fmax, confidence_threshold)
+                segments = segment_to_midi_note(result, confidence_threshold)
+
+                if segments:
+                    segments_to_midi(
+                        segments,
+                        bpm,
+                        instrument_name=stem_name.capitalize(),
+                        program=program,
+                        is_drum=False,
+                        midi_data=midi_data,
+                    )
+            except Exception as e:
+                print(f"Error in swift-f0 for {stem_name}: {e}")
+
     midi_data.write(output_path)
     return output_path
 

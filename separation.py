@@ -56,17 +56,17 @@ def separate_audio(
     output_folder: str,
     model: DemucsModel = DemucsModel.HTDEMUCS,
     device: str = "cpu",
-    two_stems: str = "vocals",
+    two_stems: Optional[str] = "vocals",
 ) -> SeparationResult:
     """
-    Separate vocals from audio using demucs.
+    Separate audio into stems using demucs.
 
     Args:
         input_file: Path to input audio file (mp3, wav, etc.)
         output_folder: Folder to save separated tracks
         model: Demucs model to use
         device: "cpu" or "cuda" for GPU acceleration
-        two_stems: "vocals" to separate vocals from instrumental
+        two_stems: Stem name to separate from the rest (e.g. "vocals"), or None for all stems.
 
     Returns:
         SeparationResult with paths to separated files
@@ -89,7 +89,8 @@ def separate_audio(
     vocals_path = os.path.join(separation_output, "vocals.wav")
     instrumental_path = os.path.join(separation_output, "no_vocals.wav")
 
-    if os.path.exists(vocals_path) and os.path.exists(instrumental_path):
+    # If two_stems is requested and both exist, return them
+    if two_stems and os.path.exists(vocals_path) and os.path.exists(instrumental_path):
         return SeparationResult(
             vocals_path=vocals_path,
             instrumental_path=instrumental_path,
@@ -101,20 +102,20 @@ def separate_audio(
     try:
         import demucs.separate
 
-        demucs.separate.main(
-            [
-                "--two-stems",
-                two_stems,
-                "-d",
-                device,
-                "--float32",
-                "-n",
-                model.value,
-                "--out",
-                os.path.join(output_folder, "separated"),
-                input_file,
-            ]
-        )
+        args = [
+            "-d",
+            device,
+            "--float32",
+            "-n",
+            model.value,
+            "--out",
+            os.path.join(output_folder, "separated"),
+            input_file,
+        ]
+        if two_stems:
+            args = ["--two-stems", two_stems] + args
+
+        demucs.separate.main(args)
 
         return SeparationResult(
             vocals_path=vocals_path if os.path.exists(vocals_path) else None,

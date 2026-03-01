@@ -2,16 +2,13 @@
 	import KaraokePlayer from '$lib/KaraokePlayer.svelte';
 	import { browser } from '$app/environment';
 
-	const API_URL = 'http://localhost:3017';
-
 	let query = '';
 	let results: any[] = [];
 	let loading = false;
 	let selectedTrack: any = null;
 	let lyrics = '';
-	let downloading = false;
-	let separating = false;
-	let audioPath = '';
+	let preparing = false;
+	let currentTask: any = null;
 	let instrumentalUrl = '';
 	let showPlayer = false;
 
@@ -20,7 +17,7 @@
 		loading = true;
 		results = [];
 		try {
-			const res = await fetch(`${API_URL}/search?q=${encodeURIComponent(query)}`);
+			const res = await fetch(`/api/search-lyrics?q=${encodeURIComponent(query)}`);
 			const data = await res.json();
 			results = data.results || [];
 		} catch (e) {
@@ -32,7 +29,7 @@
 	async function selectTrack(track: any) {
 		selectedTrack = track;
 		try {
-			const res = await fetch(`${API_URL}/lyrics/${track.id}`);
+			const res = await fetch(`/api/lyrics?id=${track.id}`);
 			const data = await res.json();
 			lyrics = data.synced_lyrics || '';
 		} catch (e) {
@@ -40,39 +37,48 @@
 		}
 	}
 
-	async function download() {
+	async function startKaraoke() {
 		if (!selectedTrack) return;
-		downloading = true;
+		preparing = true;
+		currentTask = { step: 'Starting...', progress: 0 };
+		
 		try {
-			const res = await fetch(`${API_URL}/download`, {
+			const res = await fetch(`/api/prepare`, {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({ artist: selectedTrack.artist_name, title: selectedTrack.name })
 			});
-			const data = await res.json();
-			audioPath = data.path;
+			const { taskId } = await res.json();
+			
+			if (taskId) {
+				const poll = setInterval(async () => {
+					try {
+						const taskRes = await fetch(`/api/tasks/${taskId}`);
+						const task = await taskRes.json();
+						currentTask = task;
+						
+						if (task.status === 'completed') {
+							clearInterval(poll);
+							instrumentalUrl = task.resultUrl;
+							showPlayer = true;
+							preparing = false;
+						} else if (task.status === 'failed') {
+							clearInterval(poll);
+							alert('Preparation failed: ' + task.error);
+							preparing = false;
+						}
+					} catch (e) {
+						console.error('Polling error:', e);
+					}
+				}, 1000);
+			} else {
+				alert('Failed to start preparation');
+				preparing = false;
+			}
 		} catch (e) {
 			console.error(e);
+			preparing = false;
 		}
-		downloading = false;
-	}
-
-	async function separate() {
-		if (!audioPath) return;
-		separating = true;
-		try {
-			const res = await fetch(`${API_URL}/separate`, {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ audioPath })
-			});
-			const data = await res.json();
-			instrumentalUrl = `${API_URL}${data.url}`;
-			showPlayer = true;
-		} catch (e) {
-			console.error(e);
-		}
-		separating = false;
 	}
 
 	function formatDuration(seconds: number | null): string {
@@ -139,13 +145,19 @@
 					</div>
 					
 					<div class="actions">
-						<button onclick={download} disabled={downloading}>
-							{downloading ? '...' : 'Download MP3'}
-						</button>
-						
-						{#if audioPath}
-							<button onclick={separate} disabled={separating}>
-								{separating ? '...' : 'Create Instrumental'}
+						{#if preparing && currentTask}
+							<div class="progress-container">
+								<div class="progress-header">
+									<span>{currentTask.step}</span>
+									<span>{Math.round(currentTask.progress)}%</span>
+								</div>
+								<div class="progress-bar">
+									<div class="progress-fill" style="width: {currentTask.progress}%"></div>
+								</div>
+							</div>
+						{:else}
+							<button onclick={startKaraoke} disabled={preparing}>
+								Start Karaoke
 							</button>
 						{/if}
 					</div>
@@ -244,5 +256,35 @@
 		overflow: hidden;
 	}
 	
-	.actions { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+	.actions { display: flex; gap: 0.5rem; flex-wrap: wrap; width: 100%; }
+
+	.progress-container {
+		width: 100%;
+		background: #1a1a1a;
+		padding: 1rem;
+		border-radius: 4px;
+		border: 1px solid #333;
+	}
+
+	.progress-header {
+		display: flex;
+		justify-content: space-between;
+		margin-bottom: 0.5rem;
+		font-size: 0.9rem;
+		color: #aaa;
+	}
+
+	.progress-bar {
+		width: 100%;
+		height: 8px;
+		background: #333;
+		border-radius: 4px;
+		overflow: hidden;
+	}
+
+	.progress-fill {
+		height: 100%;
+		background: #646cff;
+		transition: width 0.3s ease;
+	}
 </style>

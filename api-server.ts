@@ -20,20 +20,27 @@ async function fileExists(p: string): Promise<boolean> {
 }
 
 async function handleSearch(q: string): Promise<any[]> {
+	const t0 = performance.now();
 	const searchTerms = q.replace(/"/g, '""');
 	const ftsQuery = `"${searchTerms}"`;
 	
 	const sql = `
 		SELECT t.id, t.name, t.artist_name, t.album_name, t.duration,
 			   l.has_synced_lyrics, l.has_plain_lyrics
-		FROM tracks t
-		JOIN tracks_fts fts ON t.id = fts.rowid
-		LEFT JOIN lyrics l ON t.last_lyrics_id = l.id
-		WHERE tracks_fts MATCH ? AND l.has_synced_lyrics = 1
-		ORDER BY t.id LIMIT 20
+		FROM (
+			SELECT rowid FROM tracks_fts WHERE tracks_fts MATCH ? LIMIT 500
+		) fts
+		JOIN tracks t ON fts.rowid = t.id
+		JOIN lyrics l ON t.last_lyrics_id = l.id
+		WHERE l.has_synced_lyrics = 1 
+		  AND l.synced_lyrics IS NOT NULL
+		  AND l.synced_lyrics != ''
+		LIMIT 20
 	`;
 	
-	return db.query(sql).all(ftsQuery) as any[];
+	const results = db.query(sql).all(ftsQuery) as any[];
+	console.log(`Search for "${q}" took ${(performance.now() - t0).toFixed(2)}ms, found ${results.length} results`);
+	return results;
 }
 
 async function handleGetLyrics(id: number): Promise<any> {
@@ -47,26 +54,78 @@ async function handleGetLyrics(id: number): Promise<any> {
 	return db.query(sql).get(id) as any;
 }
 
-async function handleDownload(artist: string, title: string): Promise<any> {
+const tasks = new Map<string, {
+	status: 'pending' | 'processing' | 'completed' | 'failed',
+	step: string,
+	progress: number,
+	error?: string,
+	resultUrl?: string
+}>();
+
+async function handlePrepare(artist: string, title: string): Promise<any> {
+	const slug = `${artist} - ${title}`.replace(/[^a-zA-Z0-9 \-]/g, '');
+	const taskId = slug;
+	
+	if (tasks.has(taskId) && tasks.get(taskId)?.status !== 'failed') {
+		return { taskId };
+	}
+
+	tasks.set(taskId, { status: 'pending', step: 'Initializing', progress: 0 });
+	
+	// Start background process
+	(async () => {
+		try {
+			const downloadResult = await handleDownload(artist, title, taskId);
+			if (downloadResult.error) throw new Error(downloadResult.error);
+			
+			const separateResult = await handleSeparate(downloadResult.path, taskId);
+			if (separateResult.error) throw new Error(separateResult.error);
+			
+			tasks.set(taskId, { 
+				status: 'completed', 
+				step: 'Finished', 
+				progress: 100, 
+				resultUrl: separateResult.url 
+			});
+		} catch (err: any) {
+			console.error(`Task ${taskId} failed:`, err);
+			tasks.set(taskId, { status: 'failed', step: 'Error', progress: 0, error: err.message });
+		}
+	})();
+
+	return { taskId };
+}
+
+async function handleDownload(artist: string, title: string, taskId: string): Promise<any> {
 	const slug = `${artist} - ${title}`.replace(/[^a-zA-Z0-9 \-]/g, '');
 	const outputDir = path.join(DATA_DIR, 'audio', slug);
 	const finalPath = path.join(outputDir, `${slug}.mp3`);
 	
 	if (await fileExists(finalPath)) {
+		tasks.set(taskId, { status: 'processing', step: 'Download (Cached)', progress: 100 });
 		return { status: 'cached', path: finalPath, url: `/api/audio/audio/${slug}/${slug}.mp3` };
 	}
 	
 	await mkdir(outputDir, { recursive: true });
+	tasks.set(taskId, { status: 'processing', step: 'Searching & Downloading', progress: 0 });
 	
 	return new Promise((resolve) => {
 		const ytDlp = spawn('yt-dlp', [
 			'-x', '--audio-format', 'mp3',
 			'--audio-quality', '0',
-			'-o', path.join(outputDir, '%(title)s.%(ext)s'),
+			'-o', path.join(outputDir, `${slug}.%(ext)s`),
 			`ytsearch1:${artist} ${title}`
 		]);
 		
 		let stderr = '';
+		ytDlp.stdout.on('data', (d) => {
+			const line = d.toString();
+			const match = line.match(/\[download\]\s+(\d+\.\d+)%/);
+			if (match) {
+				const progress = parseFloat(match[1]);
+				tasks.set(taskId, { status: 'processing', step: 'Downloading', progress });
+			}
+		});
 		ytDlp.stderr.on('data', (d) => stderr += d.toString());
 		
 		ytDlp.on('close', async (code) => {
@@ -74,27 +133,18 @@ async function handleDownload(artist: string, title: string): Promise<any> {
 				resolve({ error: 'Download failed', details: stderr });
 				return;
 			}
-			
-			const fs = await import('fs');
-			const files = fs.readdirSync(outputDir);
-			const mp3File = files.find(f => f.endsWith('.mp3'));
-			const actualPath = mp3File ? path.join(outputDir, mp3File) : finalPath;
-			
-			resolve({ 
-				status: 'downloaded',
-				path: actualPath,
-				url: `/api/audio/audio/${slug}/${mp3File || slug + '.mp3'}`
-			});
+			resolve({ status: 'downloaded', path: finalPath });
 		});
 	});
 }
 
-async function handleSeparate(audioPath: string): Promise<any> {
+async function handleSeparate(audioPath: string, taskId: string): Promise<any> {
 	const basename = path.basename(audioPath, path.extname(audioPath));
 	const outputDir = path.join(DATA_DIR, 'separated');
 	const instrumentalPath = path.join(outputDir, 'htdemucs', basename, 'no_vocals.wav');
 	
 	if (await fileExists(instrumentalPath)) {
+		tasks.set(taskId, { status: 'processing', step: 'Separation (Cached)', progress: 100 });
 		return { 
 			status: 'cached', 
 			instrumentalPath,
@@ -102,6 +152,8 @@ async function handleSeparate(audioPath: string): Promise<any> {
 		};
 	}
 	
+	tasks.set(taskId, { status: 'processing', step: 'Separating (Demucs)', progress: 0 });
+
 	return new Promise((resolve) => {
 		const demucs = spawn('demucs', [
 			'--two-stems', 'vocals',
@@ -113,7 +165,24 @@ async function handleSeparate(audioPath: string): Promise<any> {
 		]);
 		
 		let stderr = '';
-		demucs.stderr.on('data', (d) => stderr += d.toString());
+		demucs.stdout.on('data', (d) => {
+			const line = d.toString();
+			// Demucs progress bar look: 10%|███       | 10/100
+			const match = line.match(/(\d+)%/);
+			if (match) {
+				const progress = parseInt(match[1], 10);
+				tasks.set(taskId, { status: 'processing', step: 'Separating', progress });
+			}
+		});
+		demucs.stderr.on('data', (d) => {
+			stderr += d.toString();
+			// Demucs often writes progress to stderr
+			const match = d.toString().match(/(\d+)%/);
+			if (match) {
+				const progress = parseInt(match[1], 10);
+				tasks.set(taskId, { status: 'processing', step: 'Separating', progress });
+			}
+		});
 		
 		demucs.on('close', async (code) => {
 			if (code !== 0) {
@@ -188,7 +257,14 @@ const server = Bun.serve({
 		}
 		
 		try {
-			if (url.pathname === '/api/search-lyrics') {
+			console.log(`[${new Date().toISOString()}] ${req.method} ${url.pathname}${url.search}`);
+			
+			if (url.pathname === '/api/health') {
+				return new Response(JSON.stringify({ status: 'ok', uptime: process.uptime() }), { 
+					headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+				});
+			}
+			else if (url.pathname === '/api/search-lyrics') {
 				const q = url.searchParams.get('q');
 				if (!q) {
 					return new Response(JSON.stringify({ error: 'Missing q parameter' }), { 
@@ -196,12 +272,13 @@ const server = Bun.serve({
 						headers: { ...corsHeaders, 'Content-Type': 'application/json' }
 					});
 				}
+				console.log(`Searching for: ${q}`);
 				const results = await handleSearch(q);
 				return new Response(JSON.stringify({ results }), { 
 					headers: { ...corsHeaders, 'Content-Type': 'application/json' }
 				});
 			}
-			else if (url.pathname === '/api/lyrics') {
+			else if (url.pathname === '/api/lyrics' && req.method === 'GET') {
 				const id = url.searchParams.get('id');
 				if (!id) {
 					return new Response(JSON.stringify({ error: 'Missing id parameter' }), { 
@@ -217,6 +294,27 @@ const server = Bun.serve({
 					});
 				}
 				return new Response(JSON.stringify(row), { 
+					headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+				});
+			}
+			else if (url.pathname === '/api/prepare' && req.method === 'POST') {
+				const body = await req.json();
+				const { artist, title } = body as { artist: string; title: string };
+				const result = await handlePrepare(artist, title);
+				return new Response(JSON.stringify(result), { 
+					headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+				});
+			}
+			else if (url.pathname.startsWith('/api/tasks/')) {
+				const taskId = url.pathname.replace('/api/tasks/', '');
+				const task = tasks.get(taskId);
+				if (!task) {
+					return new Response(JSON.stringify({ error: 'Task not found' }), { 
+						status: 404, 
+						headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+					});
+				}
+				return new Response(JSON.stringify(task), { 
 					headers: { ...corsHeaders, 'Content-Type': 'application/json' }
 				});
 			}

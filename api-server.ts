@@ -175,7 +175,7 @@ async function runYtDlp(queryOrUrl: any, outputDir: string, slug: string, taskId
 
 		console.log(`[yt-dlp] Starting with target: "${target}"`);
 
-		const ytDlp = spawn('/opt/karaoke_venv/bin/python3', ytDlpArgs);
+		const ytDlp = spawn('python3', ytDlpArgs);
 		
 		let stderr = '';
 		let stdout = '';

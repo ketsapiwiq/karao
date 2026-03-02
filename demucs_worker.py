@@ -30,56 +30,47 @@ class DemucsWorker:
                 self.model.cuda()
             print("[worker] Model loaded.")
 
-    def separate(self, input_path, output_dir, taskId):
+    def separate(self, input_path, output_dir, taskId, conn=None):
+        def send_status(step, progress=0):
+            if conn:
+                try:
+                    conn.sendall(json.dumps({"type": "progress", "step": step, "progress": progress}).encode() + b"\n")
+                except:
+                    pass
+
+        send_status("Loading Demucs model...", 5)
         self.load_model()
         self.last_active = time.time()
         
-        # We'll use the demucs.separate logic but we want it to use our preloaded model
-        # Actually, demucs.separate.main reloads the model. 
-        # To truly warm up, we'd need to reimplement the separation logic here.
-        # But wait, demucs has a cache for models. The bottleneck is often the first load 
-        # and torch initialization. 
-        
-        # For simplicity and correctness, let's use the CLI-like call but within this persistent process
-        # to keep the Python interpreter and torch warmed up.
-        # To truly avoid reload, we need to call apply_model.
-        
         try:
-            # Re-implementing a minimal version of demucs.separate.main to use our preloaded model
             from demucs.audio import AudioFile
             from demucs.apply import apply_model
             import torch
 
-            print(f"[worker] Separating {input_path}...")
+            send_status("Reading audio file...", 15)
             wav = AudioFile(input_path).read(streams=0, samplerate=self.model.samplerate, channels=self.model.audio_channels)
             wav = wav.to(next(self.model.parameters()).device)
             
-            # Normalization
+            send_status("Normalizing audio...", 25)
             ref = wav.mean(0)
             wav -= ref.mean()
             wav /= ref.std()
 
+            send_status("Processing (GPU acceleration active)...", 40)
             sources = apply_model(self.model, wav[None], num_workers=1)[0]
             sources *= ref.std()
             sources += ref.mean()
 
-            # Save stems
-            # For karaoke we usually want vocals and no_vocals (instrumental)
-            # htdemucs produces: drums, bass, other, vocals
-            
+            send_status("Saving stems...", 85)
             stem_names = self.model.sources
             vocals_idx = stem_names.index('vocals')
             
-            # vocals
             vocals = sources[vocals_idx]
-            
-            # no_vocals (sum of everything except vocals)
             no_vocals = 0
             for i, stem in enumerate(sources):
                 if i != vocals_idx:
                     no_vocals += stem
             
-            # Match the API structure: DATA_DIR/separated/MODEL_NAME/taskId
             out_path = os.path.join(output_dir, "separated", MODEL_NAME, taskId)
             os.makedirs(out_path, exist_ok=True)
             
@@ -95,16 +86,6 @@ class DemucsWorker:
             print(f"[worker] Error: {e}")
             return {"success": False, "error": str(e)}
 
-    def check_timeout(self):
-        while self.running:
-            time.sleep(60)
-            if time.time() - self.last_active > INACTIVITY_TIMEOUT:
-                print("[worker] Inactivity timeout reached. Shutting down.")
-                self.running = False
-                if os.path.exists(SOCKET_PATH):
-                    os.remove(SOCKET_PATH)
-                sys.exit(0)
-
     def run(self):
         if os.path.exists(SOCKET_PATH):
             os.remove(SOCKET_PATH)
@@ -112,7 +93,7 @@ class DemucsWorker:
         server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         server.bind(SOCKET_PATH)
         server.listen(10)
-        server.settimeout(5) # Allow periodic check of self.running
+        server.settimeout(5)
         
         print(f"[worker] Listening on {SOCKET_PATH}")
         
@@ -122,17 +103,26 @@ class DemucsWorker:
             try:
                 conn, _ = server.accept()
                 with conn:
-                    data = conn.recv(4096)
+                    # Increase buffer size for potential multi-message reads
+                    data = conn.recv(8192)
                     if not data:
                         continue
                     
-                    req = json.loads(data.decode())
+                    try:
+                        req = json.loads(data.decode())
+                    except:
+                        continue
+
                     if req.get("command") == "separate":
                         with self.lock:
-                            result = self.separate(req["inputPath"], req["outputDir"], req["taskId"])
-                        conn.sendall(json.dumps(result).encode())
+                            result = self.separate(req["inputPath"], req["outputDir"], req["taskId"], conn)
+                        conn.sendall(json.dumps(result).encode() + b"\n")
                     elif req.get("command") == "ping":
-                        conn.sendall(json.dumps({"status": "ok"}).encode())
+                        conn.sendall(json.dumps({"status": "ok"}).encode() + b"\n")
+            except socket.timeout:
+                continue
+            except Exception as e:
+                print(f"[worker] Server error: {e}")
             except socket.timeout:
                 continue
             except Exception as e:

@@ -334,26 +334,44 @@ async function handleSeparate(audioPath: string, taskId?: string): Promise<any> 
 			}));
 		});
 
-		let data = '';
+		let buffer = '';
 		client.on('data', (d: Buffer) => {
-			data += d.toString();
+			buffer += d.toString();
+			const lines = buffer.split('\n');
+			buffer = lines.pop() || ''; // Keep the last incomplete line in buffer
+
+			for (const line of lines) {
+				if (!line.trim()) continue;
+				try {
+					const msg = JSON.parse(line);
+					if (msg.type === 'progress') {
+						tasks.set(actualTaskId, { 
+							...tasks.get(actualTaskId)!, 
+							status: 'processing', 
+							step: msg.step, 
+							progress: msg.progress 
+						});
+					} else if (msg.success !== undefined) {
+						// This is the final result
+						if (msg.success) {
+							resolve({ 
+								status: 'separated',
+								instrumentalPath,
+								url: `/api/audio/separated/htdemucs/${basename}/no_vocals.mp3`
+							});
+						} else {
+							resolve({ error: 'Separation failed', details: msg.error });
+						}
+					}
+				} catch (e) {
+					console.error('[api] Failed to parse worker message:', line, e);
+				}
+			}
 		});
 
 		client.on('close', () => {
-			try {
-				const res = JSON.parse(data);
-				if (res.success) {
-					resolve({ 
-						status: 'separated',
-						instrumentalPath,
-						url: `/api/audio/separated/htdemucs/${basename}/no_vocals.mp3`
-					});
-				} else {
-					resolve({ error: 'Separation failed', details: res.error });
-				}
-			} catch (e: any) {
-				resolve({ error: 'Failed to parse worker response', details: e.message });
-			}
+			// If we haven't resolved yet, something went wrong
+			resolve({ error: 'Worker connection closed unexpectedly' });
 		});
 
 		client.on('error', (err: any) => {

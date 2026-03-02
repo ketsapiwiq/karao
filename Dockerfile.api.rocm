@@ -27,7 +27,7 @@ RUN pip3 install --no-cache-dir yt-dlp demucs
 COPY package*.json ./
 RUN bun install
 
-COPY api-server.ts ./
+COPY api-server.ts demucs_worker.py ./
 
 EXPOSE 3001
 

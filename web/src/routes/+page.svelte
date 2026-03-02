@@ -4,6 +4,7 @@
   import { onMount } from "svelte";
 
   let query = $state(pageStore.url.searchParams.get("s") || "");
+  let lastSearchedQuery = $state(pageStore.url.searchParams.get("s") || "");
   let results = $state<any[]>([]);
   let loading = $state(false);
   let page = $state(1);
@@ -15,6 +16,7 @@
     
     // Update URL if we're starting a new search
     if (reset && pageStore.url.searchParams.get("s") !== query) {
+      lastSearchedQuery = query;
       goto(`/?s=${encodeURIComponent(query)}`, { replaceState: true, keepFocus: true });
     }
 
@@ -42,13 +44,17 @@
     loading = false;
   }
 
-  // Sync query from URL on mount and when URL changes (e.g. back button)
+  // Sync query from URL ONLY when it changes via navigation (back/forward)
   $effect(() => {
     const s = pageStore.url.searchParams.get("s") || "";
-    // Only update if URL actually changed and is different from current input
-    if (s !== query && !loading && s !== "") {
+    // If the URL search param is different from our last searched query,
+    // it means the user navigated (e.g. back button), so we sync.
+    if (s !== lastSearchedQuery) {
       query = s;
-      search(true);
+      lastSearchedQuery = s;
+      if (s !== "") {
+        search(true);
+      }
     }
   });
 

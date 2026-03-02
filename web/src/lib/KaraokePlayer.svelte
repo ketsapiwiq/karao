@@ -115,12 +115,22 @@
 		lines[currentLineIndex + 1] || null
 	]);
 
-	// Calculate progress to next line for the cursor
-	let nextLineProgress = $derived.by(() => {
-		if (!lines.length) return 0;
+	// Calculate progress to next line for the loading bar
+	let showLoadingBar = $derived.by(() => {
+		if (!lines.length) return false;
 		const nextLine = lines[currentLineIndex + 1];
-		if (!nextLine) return 0;
+		if (!nextLine) return false;
 		
+		const currentLineTime = currentLineIndex >= 0 ? lines[currentLineIndex].time : 0;
+		const gap = nextLine.time - currentLineTime;
+		
+		// Show if it's the buildup to the first line OR a big break
+		return currentLineIndex === -1 || gap > 5;
+	});
+
+	let loadingProgress = $derived.by(() => {
+		if (!showLoadingBar) return 0;
+		const nextLine = lines[currentLineIndex + 1];
 		const currentLineTime = currentLineIndex >= 0 ? lines[currentLineIndex].time : 0;
 		const totalWait = nextLine.time - currentLineTime;
 		const elapsed = (currentTime + offset) - currentLineTime;
@@ -133,14 +143,17 @@
 	<audio controls src={audioSrc}></audio>
 	
 	<div class="lyrics-display">
+		{#if showLoadingBar}
+			<div class="break-indicator">
+				<div class="loader-track">
+					<div class="loader-bar" style="width: {loadingProgress * 100}%"></div>
+				</div>
+			</div>
+		{/if}
+
 		{#each displayLines as line, i}
 			{#if line}
 				<p class="line {i === 1 ? 'current' : ''}">
-					{#if i === 1 && lines[currentLineIndex + 1]}
-						<div class="cursor-track">
-							<div class="cursor" style="width: {nextLineProgress * 100}%"></div>
-						</div>
-					{/if}
 					{line.text}
 				</p>
 			{:else}
@@ -216,21 +229,38 @@
 		visibility: hidden;
 	}
 
-	.cursor-track {
+	.break-indicator {
 		position: absolute;
-		top: -5px;
-		left: 20%;
-		right: 20%;
-		height: 3px;
-		background: rgba(255, 255, 255, 0.1);
-		border-radius: 2px;
-		overflow: hidden;
+		top: 50%;
+		left: 50%;
+		transform: translate(-50%, -50%);
+		width: 100%;
+		max-width: 300px;
+		pointer-events: none;
+		opacity: 0.8;
+		z-index: 5;
 	}
 
-	.cursor {
+	.loader-track {
+		height: 4px;
+		background: rgba(255, 255, 255, 0.05);
+		border-radius: 10px;
+		overflow: hidden;
+		box-shadow: inset 0 1px 3px rgba(0,0,0,0.2);
+	}
+
+	.loader-bar {
 		height: 100%;
-		background: #646cff;
-		box-shadow: 0 0 10px #646cff;
+		background: linear-gradient(90deg, #444, #888, #444);
+		background-size: 200% 100%;
+		animation: shimmer 2s infinite linear;
+		border-radius: 10px;
+		box-shadow: 0 0 15px rgba(255,255,255,0.1);
+	}
+
+	@keyframes shimmer {
+		0% { background-position: 200% 0; }
+		100% { background-position: -200% 0; }
 	}
 
 	.toast {

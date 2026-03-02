@@ -138,8 +138,12 @@ async function handlePrepare(artist: string, title: string, customUrl?: string, 
 	return { taskId };
 }
 
-async function runYtDlp(queryOrUrl: string, outputDir: string, slug: string, taskId: string, provider = 'ytsearch'): Promise<{ success: boolean; path?: string; videoPath?: string; details?: string }> {
+async function runYtDlp(queryOrUrl: any, outputDir: string, slug: string, taskId: string, provider = 'ytsearch'): Promise<{ success: boolean; path?: string; videoPath?: string; details?: string }> {
 	return new Promise((resolve) => {
+		if (typeof queryOrUrl !== 'string') {
+			console.log(`[yt-dlp] queryOrUrl is not a string, converting: ${JSON.stringify(queryOrUrl)}`);
+			queryOrUrl = String(queryOrUrl);
+		}
 		const isDirectUrl = queryOrUrl.startsWith('http');
 		let target: string;
 		if (isDirectUrl) {
@@ -151,16 +155,17 @@ async function runYtDlp(queryOrUrl: string, outputDir: string, slug: string, tas
 		}
 
 		// Download video and extract audio so we have both
+		// We use double quotes for ffmpeg command and handle escaping
+		const audioPath = path.join(outputDir, `${slug}.mp3`);
 		const ytDlpArgs = [
 			'-m', 'yt_dlp',
 			'--format', 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
 			'--merge-output-format', 'mp4',
 			'--postprocessor-args', 'ffmpeg:-movflags +faststart',
-			'--print', 'after_move:filepath',
 			'--no-playlist',
 			'--newline',
 			'-o', path.join(outputDir, `${slug}.%(ext)s`),
-			'--exec', `ffmpeg -i {} -vn -acodec libmp3lame -q:a 0 ${path.join(outputDir, `${slug}.mp3`)}`,
+			'--exec', `ffmpeg -y -i {} -vn -acodec libmp3lame -q:a 0 "${audioPath}"`,
 			target
 		];
 

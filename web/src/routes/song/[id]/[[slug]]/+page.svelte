@@ -9,9 +9,23 @@
   let preparing = $state(false);
   let currentTask = $state<any>(null);
   let instrumentalUrl = $state("");
+  let videoUrl = $state("");
   let showPlayer = $state(false);
   let errorMsg = $state("");
   let showMenu = $state(false);
+  let enableVideo = $state(true);
+
+  onMount(() => {
+    const savedVideoPref = localStorage.getItem("enableVideo");
+    if (savedVideoPref !== null) {
+      enableVideo = savedVideoPref === "true";
+    }
+  });
+
+  function toggleVideo() {
+    enableVideo = !enableVideo;
+    localStorage.setItem("enableVideo", enableVideo.toString());
+  }
 
   async function startKaraoke(customUrl?: string, force = false, onlyDownload = false) {
     preparing = true;
@@ -43,6 +57,7 @@
             if (task.status === "completed") {
               clearInterval(poll);
               instrumentalUrl = task.resultUrl;
+              videoUrl = task.videoUrl || "";
               showPlayer = true;
               preparing = false;
             } else if (task.status === "failed") {
@@ -53,6 +68,7 @@
               // If we only want original and it's already downloaded, we can start
               clearInterval(poll);
               instrumentalUrl = task.originalUrl;
+              videoUrl = task.videoUrl || "";
               showPlayer = true;
               preparing = false;
             }
@@ -104,12 +120,22 @@
                   <button onclick={promptCustomUrl}>Custom YouTube URL</button>
                   <button onclick={() => startKaraoke(undefined, false, true)}>Use Original Audio</button>
                   <button onclick={() => startKaraoke(undefined, true)}>Force Redownload</button>
+                  <hr style="border: 0; border-top: 1px solid #333; margin: 0.5rem 0;" />
+                  <button onclick={toggleVideo}>
+                    {enableVideo ? 'Disable' : 'Enable'} Video Background
+                  </button>
                 </div>
               {/if}    </div>
   </div>
 
   {#if showPlayer}
-    <KaraokePlayer {lyrics} audioSrc={instrumentalUrl} trackName={track.artist_name + " - " + track.name} />
+    <KaraokePlayer 
+      {lyrics} 
+      audioSrc={instrumentalUrl} 
+      videoSrc={videoUrl}
+      enableVideo={enableVideo}
+      trackName={track.artist_name + " - " + track.name} 
+    />
   {:else}
     <div class="selected">
       <h1>{track.artist_name} - {track.name}</h1>

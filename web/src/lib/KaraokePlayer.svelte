@@ -1,7 +1,13 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
 
-	let { lyrics, audioSrc, trackName = "" } = $props<{ lyrics: string; audioSrc: string; trackName?: string }>();
+	let { lyrics, audioSrc, videoSrc = "", enableVideo = true, trackName = "" } = $props<{ 
+		lyrics: string; 
+		audioSrc: string; 
+		videoSrc?: string;
+		enableVideo?: boolean;
+		trackName?: string 
+	}>();
 
 	interface LyricLine {
 		time: number;
@@ -11,6 +17,7 @@
 	let lines = $state<LyricLine[]>([]);
 	let currentLineIndex = $state(-1);
 	let audio = $state<HTMLAudioElement | null>(null);
+	let video = $state<HTMLVideoElement | null>(null);
 	let currentTime = $state(0);
 	let offset = $state(0); // Offset in seconds
 	let toast = $state<{ text: string; id: number } | null>(null);
@@ -50,6 +57,17 @@
 		currentTime = audio.currentTime;
 		const adjustedTime = currentTime + offset;
 		
+		// Sync video if present
+		if (video) {
+			if (Math.abs(video.currentTime - audio.currentTime) > 0.3) {
+				video.currentTime = audio.currentTime;
+			}
+			if (audio.paused !== video.paused) {
+				if (audio.paused) video.pause();
+				else video.play();
+			}
+		}
+
 		let newIndex = -1;
 		for (let i = lines.length - 1; i >= 0; i--) {
 			if (lines[i].time <= adjustedTime) {
@@ -90,6 +108,7 @@
 	onMount(() => {
 		lines = parseLrc(lyrics);
 		audio = document.querySelector('audio');
+		video = document.querySelector('video.bg-video');
 		
 		if (trackName) {
 			const savedOffset = localStorage.getItem(`offset_${trackName}`);
@@ -98,6 +117,11 @@
 
 		if (audio) {
 			audio.addEventListener('timeupdate', updateLyrics);
+			audio.addEventListener('play', () => video?.play());
+			audio.addEventListener('pause', () => video?.pause());
+			audio.addEventListener('seeking', () => {
+				if (video) video.currentTime = audio.currentTime;
+			});
 		}
 		window.addEventListener('keydown', handleKeydown);
 	});
@@ -138,6 +162,17 @@
 </script>
 
 <div class="karaoke">
+	{#if videoSrc && enableVideo}
+		<video 
+			class="bg-video" 
+			src={videoSrc} 
+			muted 
+			playsinline 
+			loop
+		></video>
+		<div class="overlay"></div>
+	{/if}
+
 	<audio controls src={audioSrc}></audio>
 	
 	<div class="lyrics-display">
@@ -191,6 +226,30 @@
 		padding: 2rem;
 		position: relative;
 		min-height: 400px;
+		width: 100%;
+		overflow: hidden;
+	}
+
+	.bg-video {
+		position: fixed;
+		top: 0;
+		left: 0;
+		width: 100vw;
+		height: 100vh;
+		object-fit: cover;
+		opacity: 0.25;
+		z-index: -2;
+		pointer-events: none;
+	}
+
+	.overlay {
+		position: fixed;
+		top: 0;
+		left: 0;
+		width: 100vw;
+		height: 100vh;
+		background: #000;
+		z-index: -3;
 	}
 	
 	audio {

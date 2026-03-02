@@ -102,19 +102,31 @@ async function handlePrepare(artist: string, title: string): Promise<any> {
 
 	return { taskId };
 }
-async function runYtDlp(query: string, outputDir: string, slug: string, taskId: string): Promise<{ success: boolean; details?: string }> {
+async function runYtDlp(query: string, outputDir: string, slug: string, taskId: string, provider = 'ytsearch'): Promise<{ success: boolean; details?: string }> {
 	return new Promise((resolve) => {
+		console.log(`[yt-dlp] Starting ${provider} for query: "${query}"`);
 		const ytDlp = spawn('yt-dlp', [
 			'-x', '--audio-format', 'mp3',
 			'--audio-quality', '0',
+			'--print', 'title,uploader,duration,webpage_url',
+			'--no-playlist',
 			'-o', path.join(outputDir, `${slug}.%(ext)s`),
-			`ytsearch1:${query}`
+			`${provider}1:${query}`
 		]);
 		
 		let stderr = '';
+		let metadataLogged = false;
+
 		ytDlp.stdout.on('data', (d) => {
-			const line = d.toString();
-			const match = line.match(/\[download\]\s+(\d+\.\d+)%/);
+			const output = d.toString();
+			
+			// Log metadata if we haven't yet (yt-dlp prints it first due to --print)
+			if (!metadataLogged && output.includes('http')) {
+				console.log(`[yt-dlp] Grabbed video: ${output.trim().replace(/\n/g, ' | ')}`);
+				metadataLogged = true;
+			}
+
+			const match = output.match(/\[download\]\s+(\d+\.\d+)%/);
 			if (match) {
 				const progress = parseFloat(match[1]);
 				tasks.set(taskId, { status: 'processing', step: 'Downloading', progress });
@@ -123,7 +135,7 @@ async function runYtDlp(query: string, outputDir: string, slug: string, taskId: 
 		ytDlp.stderr.on('data', (d) => stderr += d.toString());
 		
 		ytDlp.on('close', async (code) => {
-			console.log(`yt-dlp exited with code ${code} for query: ${query}`);
+			console.log(`[yt-dlp] exited with code ${code} for query: ${query}`);
 			if (code !== 0) {
 				resolve({ success: false, details: stderr });
 				return;
@@ -132,7 +144,7 @@ async function runYtDlp(query: string, outputDir: string, slug: string, taskId: 
 		});
 		
 		ytDlp.on('error', (err) => {
-			console.error('Failed to start yt-dlp:', err);
+			console.error('[yt-dlp] Failed to start:', err);
 			resolve({ success: false, details: err.message });
 		});
 	});
@@ -149,22 +161,22 @@ async function handleDownload(artist: string, title: string, taskId: string): Pr
 	}
 	
 	await mkdir(outputDir, { recursive: true });
-	tasks.set(taskId, { status: 'processing', step: 'Searching YouTube Music...', progress: 0 });
 	
-	// Attempt 1: YouTube Music / Official Audio
-	const query1 = `${artist} ${title} (Official Audio)`;
-	const attempt1 = await runYtDlp(query1, outputDir, slug, taskId);
+	// Attempt 1: YouTube Music - usually best for "Official Audio"
+	tasks.set(taskId, { status: 'processing', step: 'Searching YouTube Music...', progress: 0, stepSource: 'YouTube Music' });
+	const query1 = `${artist} ${title}`; 
+	const attempt1 = await runYtDlp(query1, outputDir, slug, taskId, 'https://music.youtube.com/search?q=');
 	
 	if (attempt1.success && await fileExists(finalPath)) {
 		return { status: 'downloaded', path: finalPath };
 	}
 	
-	console.log(`YouTube Music search failed or yielded no file, falling back to general search...`);
-	tasks.set(taskId, { status: 'processing', step: 'Falling back to general YouTube...', progress: 0 });
+	console.log(`[api] YouTube Music search failed for "${query1}", falling back to general search...`);
+	tasks.set(taskId, { status: 'processing', step: 'Falling back to general YouTube...', progress: 0, stepSource: 'YouTube General' });
 	
-	// Attempt 2: General YouTube search
-	const query2 = `${artist} ${title}`;
-	const attempt2 = await runYtDlp(query2, outputDir, slug, taskId);
+	// Attempt 2: General YouTube search with "(Official Audio)" suffix
+	const query2 = `${artist} ${title} (Official Audio)`;
+	const attempt2 = await runYtDlp(query2, outputDir, slug, taskId, 'ytsearch');
 	
 	if (attempt2.success && await fileExists(finalPath)) {
 		return { status: 'downloaded', path: finalPath };

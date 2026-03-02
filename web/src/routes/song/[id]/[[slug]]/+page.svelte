@@ -94,6 +94,9 @@
           <div class="progress-header">
             <span>
               {currentTask.progress >= 100 && currentTask.status !== "completed" ? "Finalizing..." : currentTask.step}
+              {#if currentTask.stepSource}
+                <span class="source-hint">({currentTask.stepSource})</span>
+              {/if}
             </span>
             <span>{Math.round(currentTask.progress)}%</span>
           </div>
@@ -186,6 +189,12 @@
     margin-bottom: 0.5rem;
     font-size: 0.9rem;
     color: #aaa;
+  }
+
+  .source-hint {
+    font-size: 0.75rem;
+    color: #555;
+    margin-left: 0.5rem;
   }
 
   .progress-bar {

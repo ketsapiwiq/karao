@@ -56,10 +56,34 @@ class DemucsWorker:
             wav -= ref.mean()
             wav /= ref.std()
 
-            send_status("Processing (GPU acceleration active)...", 40)
-            sources = apply_model(self.model, wav[None], num_workers=1)[0]
-            sources *= ref.std()
-            sources += ref.mean()
+            send_status("Processing audio in segments...", 40)
+            
+            # htdemucs can be quite heavy. We can use segment and tqdm-like logic 
+            # by splitting the audio manually or letting apply_model do segments but we won't get callbacks.
+            # Instead of complex chunking, let's at least provide more "fake" steps if we can't get real ones,
+            # OR use the 'progress' flag and try to capture stderr (hard in this architecture).
+            
+            # Actually, apply_model has a 'segment' parameter.
+            # Let's try to process in 30s segments manually to give real feedback.
+            
+            duration = wav.shape[1] / self.model.samplerate
+            segment_length = 30 # seconds
+            total_segments = int(duration / segment_length) + 1
+            
+            all_sources = []
+            for i in range(total_segments):
+                start = i * segment_length * self.model.samplerate
+                end = min((i + 1) * segment_length * self.model.samplerate, wav.shape[1])
+                if start >= wav.shape[1]: break
+                
+                chunk = wav[:, start:end]
+                send_status(f"Separating segment {i+1}/{total_segments}...", 40 + int((i / total_segments) * 40))
+                
+                # Process chunk
+                chunk_sources = apply_model(self.model, chunk[None], num_workers=1)[0]
+                all_sources.append(chunk_sources)
+            
+            sources = torch.cat(all_sources, dim=1)
 
             send_status("Saving stems...", 85)
             stem_names = self.model.sources

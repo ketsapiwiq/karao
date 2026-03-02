@@ -86,6 +86,16 @@ class DemucsWorker:
             print(f"[worker] Error: {e}")
             return {"success": False, "error": str(e)}
 
+    def check_timeout(self):
+        while self.running:
+            time.sleep(60)
+            if time.time() - self.last_active > INACTIVITY_TIMEOUT:
+                print("[worker] Inactivity timeout reached. Shutting down.")
+                self.running = False
+                if os.path.exists(SOCKET_PATH):
+                    os.remove(SOCKET_PATH)
+                sys.exit(0)
+
     def run(self):
         if os.path.exists(SOCKET_PATH):
             os.remove(SOCKET_PATH)

@@ -19,10 +19,13 @@ async function fileExists(p: string): Promise<boolean> {
 	}
 }
 
-async function handleSearch(q: string): Promise<any[]> {
+async function handleSearch(q: string, page: number = 1, limit: number = 50): Promise<any[]> {
 	const t0 = performance.now();
-	const searchTerms = q.replace(/"/g, '""');
-	const ftsQuery = `"${searchTerms}"`;
+	// Split query into terms and escape them for FTS, then join with AND (implied by space)
+	// We want to support "Artist Title" or "Title Artist"
+	const terms = q.split(/\s+/).filter(t => t.length > 0).map(t => `"${t.replace(/"/g, '""')}"`);
+	const ftsQuery = terms.join(' ');
+	const offset = (page - 1) * limit;
 	
 	const sql = `
 		SELECT t.id, t.name, t.artist_name, t.album_name, t.duration,
@@ -34,11 +37,11 @@ async function handleSearch(q: string): Promise<any[]> {
 		  AND l.has_synced_lyrics = 1 
 		  AND l.synced_lyrics IS NOT NULL
 		  AND l.synced_lyrics != ''
-		LIMIT 20
+		LIMIT ? OFFSET ?
 	`;
 	
-	const results = db.query(sql).all(ftsQuery) as any[];
-	console.log(`Search for "${q}" took ${(performance.now() - t0).toFixed(2)}ms, found ${results.length} results`);
+	const results = db.query(sql).all(ftsQuery, limit, offset) as any[];
+	console.log(`Search for "${q}" (page ${page}) took ${(performance.now() - t0).toFixed(2)}ms, found ${results.length} results`);
 	return results;
 }
 
@@ -311,14 +314,16 @@ const server = Bun.serve({
 			}
 			else if (url.pathname === '/api/search-lyrics') {
 				const q = url.searchParams.get('q');
+				const page = parseInt(url.searchParams.get('page') || '1', 10);
+				const limit = parseInt(url.searchParams.get('limit') || '50', 10);
 				if (!q) {
 					return new Response(JSON.stringify({ error: 'Missing q parameter' }), { 
 						status: 400, 
 						headers: { ...corsHeaders, 'Content-Type': 'application/json' }
 					});
 				}
-				console.log(`Searching for: ${q}`);
-				const results = await handleSearch(q);
+				console.log(`Searching for: ${q} (page: ${page}, limit: ${limit})`);
+				const results = await handleSearch(q, page, limit);
 				return new Response(JSON.stringify({ results }), { 
 					headers: { ...corsHeaders, 'Content-Type': 'application/json' }
 				});

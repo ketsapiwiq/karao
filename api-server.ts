@@ -173,14 +173,14 @@ async function handleDownload(artist: string, title: string, taskId: string): Pr
 async function handleSeparate(audioPath: string, taskId: string): Promise<any> {
 	const basename = path.basename(audioPath, path.extname(audioPath));
 	const outputDir = path.join(DATA_DIR, 'separated');
-	const instrumentalPath = path.join(outputDir, 'htdemucs', basename, 'no_vocals.wav');
+	const instrumentalPath = path.join(outputDir, 'htdemucs', basename, 'no_vocals.mp3');
 	
 	if (await fileExists(instrumentalPath)) {
 		tasks.set(taskId, { status: 'processing', step: 'Separation (Cached)', progress: 100 });
 		return { 
 			status: 'cached', 
 			instrumentalPath,
-			url: `/api/audio/separated/htdemucs/${basename}/no_vocals.wav`
+			url: `/api/audio/separated/htdemucs/${basename}/no_vocals.mp3`
 		};
 	}
 	
@@ -189,8 +189,8 @@ async function handleSeparate(audioPath: string, taskId: string): Promise<any> {
 	return new Promise((resolve) => {
 		const demucs = spawn('demucs', [
 			'--two-stems', 'vocals',
-			'-d', 'cpu',
-			'--float32',
+			'-d', 'cuda',
+			'--mp3',
 			'-n', 'htdemucs',
 			'--out', outputDir,
 			audioPath
@@ -229,7 +229,7 @@ async function handleSeparate(audioPath: string, taskId: string): Promise<any> {
 			resolve({ 
 				status: 'separated',
 				instrumentalPath,
-				url: `/api/audio/separated/htdemucs/${basename}/no_vocals.wav`
+				url: `/api/audio/separated/htdemucs/${basename}/no_vocals.mp3`
 			});
 		});
 

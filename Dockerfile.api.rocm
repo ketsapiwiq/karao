@@ -21,7 +21,7 @@ WORKDIR /app
 
 # Demucs and other python deps
 # We use the pre-installed torch from the ROCm image
-RUN pip3 install --no-cache-dir yt-dlp demucs torchcodec
+RUN pip3 install --no-cache-dir yt-dlp demucs
 
 COPY package*.json ./
 RUN bun install

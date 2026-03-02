@@ -1,16 +1,11 @@
 <script lang="ts">
   import KaraokePlayer from "$lib/KaraokePlayer.svelte";
   import { browser } from "$app/environment";
+  import { goto } from "$app/navigation";
 
   let query = "";
   let results: any[] = [];
   let loading = false;
-  let selectedTrack: any = null;
-  let lyrics = "";
-  let preparing = false;
-  let currentTask: any = null;
-  let instrumentalUrl = "";
-  let showPlayer = false;
 
   async function search() {
     if (!query.trim()) return;
@@ -28,15 +23,8 @@
     loading = false;
   }
 
-  async function selectTrack(track: any) {
-    selectedTrack = track;
-    try {
-      const res = await fetch(`/api/lyrics?id=${track.id}`);
-      const data = await res.json();
-      lyrics = data.synced_lyrics || "";
-    } catch (e) {
-      console.error(e);
-    }
+  function selectTrack(track: any) {
+    goto(`/song/${track.id}/${encodeURIComponent(track.name)}`);
   }
 
   async function startKaraoke() {
@@ -104,77 +92,36 @@
 </svelte:head>
 
 <div class="container">
-  {#if showPlayer}
-    <button class="back" onclick={goBack}>← Back</button>
-    <KaraokePlayer {lyrics} audioSrc={instrumentalUrl} />
-  {:else}
-    <h1>Karao</h1>
+  <h1>Karao</h1>
 
-    <div class="search">
-      <input
-        type="text"
-        bind:value={query}
-        placeholder="Search for a song..."
-        onkeydown={(e) => e.key === "Enter" && search()}
-      />
-      <button onclick={search} disabled={loading}>
-        {loading ? "..." : "Search"}
-      </button>
-    </div>
+  <div class="search">
+    <input
+      type="text"
+      bind:value={query}
+      placeholder="Search for a song..."
+      onkeydown={(e) => e.key === "Enter" && search()}
+    />
+    <button onclick={search} disabled={loading}>
+      {loading ? "..." : "Search"}
+    </button>
+  </div>
 
-    {#if results.length > 0}
-      <ul class="results">
-        {#each results as track}
-          <li
-            onclick={() => selectTrack(track)}
-            onkeydown={(e) => e.key === "Enter" && selectTrack(track)}
-            role="button"
-            tabindex="0"
-            class:selected={selectedTrack?.id === track.id}
-          >
-            <span class="artist">{track.artist_name}</span>
-            <span class="title">{track.name}</span>
-            <span class="duration">{formatDuration(track.duration)}</span>
-            <a href="/song/{track.id}/{encodeURIComponent(track.name)}" class="permalink" onclick={(e) => e.stopPropagation()}>🔗</a>
-          </li>
-        {/each}
-      </ul>
-    {/if}
-
-    {#if selectedTrack}
-      <div class="selected">
-        <h2>{selectedTrack.artist_name} - {selectedTrack.name}</h2>
-
-        {#if lyrics}
-          <div class="lyrics-preview">
-            {lyrics.split("\n").slice(0, 10).join("\n")}...
-          </div>
-
-          <div class="actions">
-            {#if preparing && currentTask}
-              <div class="progress-container">
-                <div class="progress-header">
-                  <span>{currentTask.step}</span>
-                  <span>{Math.round(currentTask.progress)}%</span>
-                </div>
-                <div class="progress-bar">
-                  <div
-                    class="progress-fill"
-                    style="width: {currentTask.progress}%"
-                  ></div>
-                </div>
-              </div>
-            {:else}
-              <button onclick={startKaraoke} disabled={preparing}>
-                Start Karaoke
-              </button>
-            {/if}
-          </div>
-        {:else}
-          <p>No synced lyrics available</p>
-        {/if}
-      </div>
-    {/if}
+  {#if results.length > 0}
+    <ul class="results">
+      {#each results as track}
+        <li
+          onclick={() => selectTrack(track)}
+          onkeydown={(e) => e.key === "Enter" && selectTrack(track)}
+          role="button"
+          tabindex="0"
+        >
+          <span class="artist">{track.artist_name}</span>
+          <span class="title">{track.name}</span>
+          <span class="duration">{formatDuration(track.duration)}</span>
+          <a href="/song/{track.id}/{encodeURIComponent(track.name)}" class="permalink" onclick={(e) => e.stopPropagation()}>🔗</a>
+        </li>
+      {/each}
+    </ul>
   {/if}
 </div>
 

@@ -131,6 +131,7 @@ async function runYtDlp(queryOrUrl: string, outputDir: string, slug: string, tas
 
 		// We use a specific print format to avoid confusion and get the real filepath
 		const ytDlpArgs = [
+			'-m', 'yt_dlp',
 			'-x', '--audio-format', 'mp3',
 			'--audio-quality', '0',
 			'--print', 'title',
@@ -148,7 +149,7 @@ async function runYtDlp(queryOrUrl: string, outputDir: string, slug: string, tas
 
 		console.log(`[yt-dlp] Starting with target: "${target}"`);
 
-		const ytDlp = spawn('yt-dlp', ytDlpArgs);
+		const ytDlp = spawn('python3', ytDlpArgs);
 		
 		let stderr = '';
 		let stdout = '';
@@ -217,21 +218,22 @@ async function runYtDlp(queryOrUrl: string, outputDir: string, slug: string, tas
 	});
 }
 
-async function handleDownload(artist: string, title: string, taskId: string, customUrl?: string): Promise<any> {
-	const slug = taskId;
+async function handleDownload(artist: string, title: string, taskId?: string, customUrl?: string): Promise<any> {
+	const slug = taskId || `${artist} - ${title}`.replace(/[^a-zA-Z0-9 \-]/g, '');
+	const actualTaskId = taskId || slug;
 	const outputDir = path.join(DATA_DIR, 'audio', slug);
 	const finalPath = path.join(outputDir, `${slug}.mp3`);
 	
 	await mkdir(outputDir, { recursive: true });
 
 	if (await fileExists(finalPath)) {
-		tasks.set(taskId, { status: 'processing', step: 'Download (Cached)', progress: 100 });
+		if (taskId) tasks.set(taskId, { status: 'processing', step: 'Download (Cached)', progress: 100 });
 		return { status: 'cached', path: finalPath };
 	}
 
 	if (customUrl) {
-		tasks.set(taskId, { status: 'processing', step: 'Downloading custom URL...', progress: 0, stepSource: 'Manual URL' });
-		const attempt = await runYtDlp(customUrl, outputDir, slug, taskId);
+		if (taskId) tasks.set(taskId, { status: 'processing', step: 'Downloading custom URL...', progress: 0, stepSource: 'Manual URL' });
+		const attempt = await runYtDlp(customUrl, outputDir, slug, actualTaskId);
 		if (attempt.success && attempt.path) {
 			return { status: 'downloaded', path: attempt.path };
 		}
@@ -243,14 +245,14 @@ async function handleDownload(artist: string, title: string, taskId: string, cus
 
 	// Attempt 1: YouTube search (quoted) - usually official/best version
 	console.log(`[api] Attempt 1: Searching YouTube for "${quotedQuery}"`);
-	tasks.set(taskId, { status: 'processing', step: 'Searching YouTube (Precise)...', progress: 0, stepSource: 'YouTube' });
-	const attempt1 = await runYtDlp(quotedQuery, outputDir, slug, taskId, 'ytsearch');
+	if (taskId) tasks.set(taskId, { status: 'processing', step: 'Searching YouTube (Precise)...', progress: 0, stepSource: 'YouTube' });
+	const attempt1 = await runYtDlp(quotedQuery, outputDir, slug, actualTaskId, 'ytsearch');
 	if (attempt1.success && attempt1.path) return { status: 'downloaded', path: attempt1.path };
 
 	// Attempt 2: Standard YouTube search
 	console.log(`[api] Attempt 1 failed. Attempt 2: Searching YouTube for "${normalQuery}"`);
-	tasks.set(taskId, { status: 'processing', step: 'Searching YouTube...', progress: 0, stepSource: 'YouTube' });
-	const attempt2 = await runYtDlp(normalQuery, outputDir, slug, taskId, 'ytsearch');
+	if (taskId) tasks.set(taskId, { status: 'processing', step: 'Searching YouTube...', progress: 0, stepSource: 'YouTube' });
+	const attempt2 = await runYtDlp(normalQuery, outputDir, slug, actualTaskId, 'ytsearch');
 	if (attempt2.success && attempt2.path) return { status: 'downloaded', path: attempt2.path };
 	
 	return { error: 'Download failed', details: attempt2.details || attempt1.details };
@@ -277,13 +279,14 @@ async function ensureWorkerRunning(): Promise<boolean> {
 	return false;
 }
 
-async function handleSeparate(audioPath: string, taskId: string): Promise<any> {
-	const basename = taskId;
+async function handleSeparate(audioPath: string, taskId?: string): Promise<any> {
+	const basename = taskId || path.basename(audioPath, path.extname(audioPath));
+	const actualTaskId = taskId || basename;
 	const outputDir = path.join(DATA_DIR, 'separated');
 	const instrumentalPath = path.join(outputDir, 'htdemucs', basename, 'no_vocals.mp3');
 	
 	if (await fileExists(instrumentalPath)) {
-		tasks.set(taskId, { status: 'processing', step: 'Separation (Cached)', progress: 100 });
+		if (taskId) tasks.set(taskId, { status: 'processing', step: 'Separation (Cached)', progress: 100 });
 		return { 
 			status: 'cached', 
 			instrumentalPath,
@@ -291,7 +294,7 @@ async function handleSeparate(audioPath: string, taskId: string): Promise<any> {
 		};
 	}
 	
-	tasks.set(taskId, { status: 'processing', step: 'Separating (Demucs)', progress: 0 });
+	if (taskId) tasks.set(taskId, { status: 'processing', step: 'Separating (Demucs)', progress: 0 });
 
 	if (!(await ensureWorkerRunning())) {
 		return { error: 'Failed to start demucs worker' };
@@ -304,7 +307,7 @@ async function handleSeparate(audioPath: string, taskId: string): Promise<any> {
 				command: 'separate',
 				inputPath: audioPath,
 				outputDir: DATA_DIR, // Worker adds 'separated' and model name
-				taskId: taskId
+				taskId: actualTaskId
 			}));
 		});
 

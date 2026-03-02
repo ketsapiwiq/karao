@@ -79,7 +79,7 @@
 <div class="container">
   {#if showPlayer}
     <button class="back" onclick={goBack}>← Home</button>
-    <KaraokePlayer {lyrics} audioSrc={instrumentalUrl} />
+    <KaraokePlayer {lyrics} audioSrc={instrumentalUrl} trackName={track.artist_name + " - " + track.name} />
   {:else}
     <button class="back" onclick={goBack}>← Home</button>
     
@@ -92,12 +92,15 @@
       {:else if preparing && currentTask}
         <div class="progress-container">
           <div class="progress-header">
-            <span>{currentTask.step}</span>
+            <span>
+              {currentTask.progress >= 100 && currentTask.status !== "completed" ? "Finalizing..." : currentTask.step}
+            </span>
             <span>{Math.round(currentTask.progress)}%</span>
           </div>
           <div class="progress-bar">
             <div
               class="progress-fill"
+              class:finalizing={currentTask.progress >= 100 && currentTask.status !== "completed"}
               style="width: {currentTask.progress}%"
             ></div>
           </div>
@@ -197,5 +200,16 @@
     height: 100%;
     background: #646cff;
     transition: width 0.3s ease;
+  }
+
+  .progress-fill.finalizing {
+    background: #a5a9ff;
+    animation: pulse 1.5s infinite ease-in-out;
+  }
+
+  @keyframes pulse {
+    0% { opacity: 0.6; }
+    50% { opacity: 1; }
+    100% { opacity: 0.6; }
   }
 </style>

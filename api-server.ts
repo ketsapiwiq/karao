@@ -61,7 +61,8 @@ const tasks = new Map<string, {
 	step: string,
 	progress: number,
 	error?: string,
-	resultUrl?: string
+	resultUrl?: string,
+	stepSource?: string
 }>();
 
 async function handlePrepare(artist: string, title: string, customUrl?: string, force = false): Promise<any> {
@@ -96,7 +97,7 @@ async function handlePrepare(artist: string, title: string, customUrl?: string, 
 			const downloadResult = await handleDownload(artist, title, taskId, customUrl);
 			if (downloadResult.error) throw new Error(downloadResult.error);
 
-			console.log(`Download for ${taskId} finished, starting separation`);
+			console.log(`Download for ${taskId} finished, starting separation: ${downloadResult.path}`);
 			const separateResult = await handleSeparate(downloadResult.path, taskId);
 			if (separateResult.error) throw new Error(separateResult.error);
 
@@ -115,32 +116,36 @@ async function handlePrepare(artist: string, title: string, customUrl?: string, 
 
 	return { taskId };
 }
-async function runYtDlp(queryOrUrl: string, outputDir: string, slug: string, taskId: string, provider = 'ytsearch'): Promise<{ success: boolean; details?: string }> {
+
+async function runYtDlp(queryOrUrl: string, outputDir: string, slug: string, taskId: string, provider = 'ytsearch'): Promise<{ success: boolean; path?: string; details?: string }> {
 	return new Promise((resolve) => {
 		const isDirectUrl = queryOrUrl.startsWith('http');
 		let target: string;
 		if (isDirectUrl) {
 			target = queryOrUrl;
 		} else if (provider.startsWith('http')) {
-			// If provider is a search URL, append the query
 			target = `${provider}${encodeURIComponent(queryOrUrl)}`;
 		} else {
-			// Default prefix logic (e.g., ytsearch1:)
 			target = `${provider}1:${queryOrUrl}`;
 		}
 
 		console.log(`[yt-dlp] Starting with target: "${target}"`);
 
+		// We use a specific print format to avoid confusion and get the real filepath
 		const ytDlpArgs = [
 			'-x', '--audio-format', 'mp3',
 			'--audio-quality', '0',
-			'--print', 'title,uploader,duration,webpage_url',
+			'--print', 'title',
+			'--print', 'uploader',
+			'--print', 'duration',
+			'--print', 'webpage_url',
+			'--print', 'after_move:filepath',
 			'--no-playlist',
+			'--newline',
 			'-o', path.join(outputDir, `${slug}.%(ext)s`),
 			target
 		];
 
-		// Exclude live and karaoke from searches (but not direct URLs)
 		if (!isDirectUrl && !provider.includes('music.youtube.com')) {
 			ytDlpArgs.splice(-1, 0, '--match-filter', 'title !~* "live" & title !~* "karaoke"');
 		}
@@ -148,32 +153,63 @@ async function runYtDlp(queryOrUrl: string, outputDir: string, slug: string, tas
 		const ytDlp = spawn('yt-dlp', ytDlpArgs);
 		
 		let stderr = '';
-		let metadataLogged = false;
+		let stdout = '';
+		let downloadedPath = '';
 
 		ytDlp.stdout.on('data', (d) => {
 			const output = d.toString();
+			stdout += output;
+			const lines = output.split('\n').filter(l => l.trim().length > 0);
 			
-			// Log metadata if we haven't yet (yt-dlp prints it first due to --print)
-			if (!metadataLogged && output.includes('http')) {
-				console.log(`[yt-dlp] Grabbed video: ${output.trim().replace(/\n/g, ' | ')}`);
-				metadataLogged = true;
+			for (const line of lines) {
+				const trimmed = line.trim();
+				if (trimmed.includes('[download]')) {
+					const match = trimmed.match(/(\d+\.\d+)%/);
+					if (match) {
+						const progress = parseFloat(match[1]);
+						tasks.set(taskId, { status: 'processing', step: 'Downloading', progress });
+					}
+				}
 			}
+		});
 
+		ytDlp.stderr.on('data', (d) => {
+			const output = d.toString();
+			stderr += output;
 			const match = output.match(/\[download\]\s+(\d+\.\d+)%/);
 			if (match) {
 				const progress = parseFloat(match[1]);
 				tasks.set(taskId, { status: 'processing', step: 'Downloading', progress });
 			}
 		});
-		ytDlp.stderr.on('data', (d) => stderr += d.toString());
 		
 		ytDlp.on('close', async (code) => {
 			console.log(`[yt-dlp] exited with code ${code} for target: ${target}`);
+			
+			// Try to find the path in stdout
+			const stdoutLines = stdout.split('\n').map(l => l.trim()).filter(l => l.length > 0 && !l.startsWith('['));
+			// Metadata: title, uploader, duration, url, filepath
+			if (stdoutLines.length >= 5) {
+				const metadata = stdoutLines.slice(0, 4);
+				console.log(`[yt-dlp] Metadata: ${metadata.join(' | ')}`);
+				const pathFromStdout = stdoutLines[4];
+				if (pathFromStdout && pathFromStdout !== 'NA' && pathFromStdout.endsWith('.mp3')) {
+					downloadedPath = pathFromStdout;
+				}
+			}
+
 			if (code !== 0) {
 				resolve({ success: false, details: stderr });
 				return;
 			}
-			resolve({ success: true });
+			
+			const expectedPath = downloadedPath || path.join(outputDir, `${slug}.mp3`);
+			if (await fileExists(expectedPath)) {
+				resolve({ success: true, path: expectedPath });
+			} else {
+				// Final search in directory as fallback
+				resolve({ success: false, details: 'File not found after successful download. Target: ' + expectedPath });
+			}
 		});
 		
 		ytDlp.on('error', (err) => {
@@ -184,7 +220,7 @@ async function runYtDlp(queryOrUrl: string, outputDir: string, slug: string, tas
 }
 
 async function handleDownload(artist: string, title: string, taskId: string, customUrl?: string): Promise<any> {
-	const slug = `${artist} - ${title}`.replace(/[^a-zA-Z0-9 \-]/g, '');
+	const slug = taskId;
 	const outputDir = path.join(DATA_DIR, 'audio', slug);
 	const finalPath = path.join(outputDir, `${slug}.mp3`);
 	
@@ -198,19 +234,28 @@ async function handleDownload(artist: string, title: string, taskId: string, cus
 	if (customUrl) {
 		tasks.set(taskId, { status: 'processing', step: 'Downloading custom URL...', progress: 0, stepSource: 'Manual URL' });
 		const attempt = await runYtDlp(customUrl, outputDir, slug, taskId);
-		if (attempt.success && await fileExists(finalPath)) {
-			return { status: 'downloaded', path: finalPath };
+		if (attempt.success && attempt.path) {
+			return { status: 'downloaded', path: attempt.path };
 		}
 		return { error: 'Custom URL download failed', details: attempt.details };
 	}
 	
+	// Attempt 0: Standard YouTube search - most reliable for most tracks
+	tasks.set(taskId, { status: 'processing', step: 'Searching YouTube...', progress: 0, stepSource: 'YouTube' });
+	const query0 = `${artist} ${title}`;
+	const attempt0 = await runYtDlp(query0, outputDir, slug, taskId, 'ytsearch');
+	
+	if (attempt0.success && attempt0.path) {
+		return { status: 'downloaded', path: attempt0.path };
+	}
+
 	// Attempt 1: Precise YouTube search with quoted artist and title
 	tasks.set(taskId, { status: 'processing', step: 'Searching YouTube (Precise)...', progress: 0, stepSource: 'YouTube' });
 	const query1 = `"${artist}" "${title}"`;
 	const attempt1 = await runYtDlp(query1, outputDir, slug, taskId, 'ytsearch');
 	
-	if (attempt1.success && await fileExists(finalPath)) {
-		return { status: 'downloaded', path: finalPath };
+	if (attempt1.success && attempt1.path) {
+		return { status: 'downloaded', path: attempt1.path };
 	}
 
 	// Attempt 2: YouTube search with (Official Audio)
@@ -218,26 +263,26 @@ async function handleDownload(artist: string, title: string, taskId: string, cus
 	const query2 = `${artist} ${title} (Official Audio)`;
 	const attempt2 = await runYtDlp(query2, outputDir, slug, taskId, 'ytsearch');
 	
-	if (attempt2.success && await fileExists(finalPath)) {
-		return { status: 'downloaded', path: finalPath };
+	if (attempt2.success && attempt2.path) {
+		return { status: 'downloaded', path: attempt2.path };
 	}
 	
-	console.log(`[api] YouTube search failed for "${query1}" and "${query2}", falling back to YT Music...`);
+	console.log(`[api] YouTube search failed for "${query0}", "${query1}" and "${query2}", falling back to YT Music...`);
 	tasks.set(taskId, { status: 'processing', step: 'Falling back to YT Music...', progress: 0, stepSource: 'YouTube Music' });
 	
 	// Attempt 3: YouTube Music search
 	const query3 = `${artist} ${title}`;
 	const attempt3 = await runYtDlp(query3, outputDir, slug, taskId, 'https://music.youtube.com/search?q=');
 	
-	if (attempt3.success && await fileExists(finalPath)) {
-		return { status: 'downloaded', path: finalPath };
+	if (attempt3.success && attempt3.path) {
+		return { status: 'downloaded', path: attempt3.path };
 	}
 	
-	return { error: 'Download failed', details: attempt3.details || attempt2.details || attempt1.details };
+	return { error: 'Download failed', details: attempt3.details || attempt2.details || attempt1.details || attempt0.details };
 }
 
 async function handleSeparate(audioPath: string, taskId: string): Promise<any> {
-	const basename = path.basename(audioPath, path.extname(audioPath));
+	const basename = taskId;
 	const outputDir = path.join(DATA_DIR, 'separated');
 	const instrumentalPath = path.join(outputDir, 'htdemucs', basename, 'no_vocals.mp3');
 	
@@ -368,7 +413,7 @@ const server = Bun.serve({
 		}
 		
 		try {
-			console.log(`[${new Date().toISOString()}] ${req.method} ${url.pathname}${url.search}`);
+			// console.log(`[${new Date().toISOString()}] ${req.method} ${url.pathname}${url.search}`);
 			
 			if (url.pathname === '/api/health') {
 				return new Response(JSON.stringify({ status: 'ok', uptime: process.uptime() }), { 
@@ -420,10 +465,8 @@ const server = Bun.serve({
 			}
 			else if (url.pathname.startsWith('/api/tasks/')) {
 				const taskId = decodeURIComponent(url.pathname.replace('/api/tasks/', ''));
-				console.log(`Polling task: "${taskId}"`);
 				const task = tasks.get(taskId);
 				if (!task) {
-					console.log(`Task not found for ID: "${taskId}". Available tasks: ${Array.from(tasks.keys()).join(', ')}`);
 					return new Response(JSON.stringify({ error: 'Task not found' }), { 
 						status: 404, 
 						headers: { ...corsHeaders, 'Content-Type': 'application/json' }

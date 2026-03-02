@@ -1,6 +1,7 @@
 <script lang="ts">
   import { goto } from "$app/navigation";
   import { page as pageStore } from "$app/state";
+  import { onMount } from "svelte";
 
   let query = $state(pageStore.url.searchParams.get("s") || "");
   let results = $state<any[]>([]);
@@ -41,20 +42,21 @@
     loading = false;
   }
 
-  // Trigger search on mount if query param exists
+  // Sync query from URL on mount and when URL changes (e.g. back button)
   $effect(() => {
-    const s = pageStore.url.searchParams.get("s");
-    if (s && !hasSearched) {
+    const s = pageStore.url.searchParams.get("s") || "";
+    // Only update if URL actually changed and is different from current input
+    if (s !== query && !loading && s !== "") {
       query = s;
       search(true);
     }
   });
 
-  // Reset search state when user edits query
-  $effect(() => {
-    if (query !== pageStore.url.searchParams.get("s")) {
-      hasSearched = false;
-      results = [];
+  // Also handle initial search if query exists
+  onMount(() => {
+    const s = pageStore.url.searchParams.get("s");
+    if (s) {
+      search(true);
     }
   });
 

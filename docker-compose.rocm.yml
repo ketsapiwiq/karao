@@ -1,0 +1,45 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api.rocm
+    ports:
+      - "3011:3001"
+    volumes:
+      - /mnt/gloubinours2:/mnt/gloubinours2:ro
+      - data:/data
+    # Required for ROCm/GPU access
+    devices:
+      - "/dev/kfd:/dev/kfd"
+      - "/dev/dri:/dev/dri"
+    group_add:
+      - video
+      - render
+    security_opt:
+      - seccomp:unconfined
+    environment:
+      - LRCLIB_DB=/mnt/gloubinours2/lrclib-db-dump-20260122T091251Z.sqlite3
+      - DATA_DIR=/data
+      - PORT=3001
+      - HSA_OVERRIDE_GFX_VERSION=10.3.0
+    restart: unless-stopped
+
+  web:
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+    ports:
+      - "3010:3000"
+    environment:
+      - API_URL=http://api:3001
+      - ORIGIN=https://doxx.fr
+    depends_on:
+      - api
+    restart: unless-stopped
+
+volumes:
+  data:
+
+networks:
+  default:
+    name: karaoke

@@ -1,0 +1,33 @@
+FROM rocm/pytorch:latest
+
+# Use the PyTorch ROCm image as it's the most stable for demucs/torch
+# Even though host is 7.2.0, this should be compatible.
+# We'll need to install Bun and other deps.
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV HSA_OVERRIDE_GFX_VERSION=10.3.0
+
+RUN apt-get update && apt-get install -y \
+    curl \
+    unzip \
+    ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Bun
+RUN curl -fsSL https://bun.sh/install | bash
+ENV PATH="/root/.bun/bin:${PATH}"
+
+WORKDIR /app
+
+# Demucs and other python deps
+# We use the pre-installed torch from the ROCm image
+RUN pip3 install --no-cache-dir yt-dlp demucs torchcodec
+
+COPY package*.json ./
+RUN bun install
+
+COPY api-server.ts ./
+
+EXPOSE 3001
+
+CMD ["bun", "run", "api-server.ts"]

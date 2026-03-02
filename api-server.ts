@@ -64,14 +64,14 @@ const tasks = new Map<string, {
 	resultUrl?: string
 }>();
 
-async function handlePrepare(artist: string, title: string, customUrl?: string): Promise<any> {
+async function handlePrepare(artist: string, title: string, customUrl?: string, force = false): Promise<any> {
 	const slug = `${artist} - ${title}`.replace(/[^a-zA-Z0-9 \-]/g, '');
 	const taskId = slug;
 
-	if (customUrl) {
-		console.log(`Forcing re-preparation for ${taskId} with custom URL: ${customUrl}`);
+	if (customUrl || force) {
+		console.log(`Forcing re-preparation for ${taskId}${customUrl ? ` with custom URL: ${customUrl}` : ''}`);
 		tasks.delete(taskId);
-		// Cleanup existing directories
+		// Cleanup existing directories/files
 		const audioDir = path.join(DATA_DIR, 'audio', slug);
 		const separatedDir = path.join(DATA_DIR, 'separated', 'htdemucs', slug);
 		try {
@@ -179,12 +179,12 @@ async function handleDownload(artist: string, title: string, taskId: string, cus
 	const outputDir = path.join(DATA_DIR, 'audio', slug);
 	const finalPath = path.join(outputDir, `${slug}.mp3`);
 	
-	if (!customUrl && await fileExists(finalPath)) {
-		tasks.set(taskId, { status: 'processing', step: 'Download (Cached)', progress: 100 });
-		return { status: 'cached', path: finalPath, url: `/api/audio/audio/${slug}/${slug}.mp3` };
-	}
-	
 	await mkdir(outputDir, { recursive: true });
+
+	if (await fileExists(finalPath)) {
+		tasks.set(taskId, { status: 'processing', step: 'Download (Cached)', progress: 100 });
+		return { status: 'cached', path: finalPath };
+	}
 
 	if (customUrl) {
 		tasks.set(taskId, { status: 'processing', step: 'Downloading custom URL...', progress: 0, stepSource: 'Manual URL' });
@@ -394,8 +394,8 @@ const server = Bun.serve({
 			}
 			else if (url.pathname === '/api/prepare' && req.method === 'POST') {
 				const body = await req.json();
-				const { artist, title, youtubeUrl } = body as { artist: string; title: string; youtubeUrl?: string };
-				const result = await handlePrepare(artist, title, youtubeUrl);
+				const { artist, title, youtubeUrl, force } = body as { artist: string; title: string; youtubeUrl?: string; force?: boolean };
+				const result = await handlePrepare(artist, title, youtubeUrl, force);
 				return new Response(JSON.stringify(result), { 
 					headers: { ...corsHeaders, 'Content-Type': 'application/json' }
 				});

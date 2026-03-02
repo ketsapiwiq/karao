@@ -13,7 +13,7 @@
   let errorMsg = $state("");
   let showMenu = $state(false);
 
-  async function startKaraoke(customUrl?: string) {
+  async function startKaraoke(customUrl?: string, force = false) {
     preparing = true;
     errorMsg = "";
     showMenu = false;
@@ -27,6 +27,7 @@
           artist: track.artist_name,
           title: track.name,
           youtubeUrl: customUrl,
+          force,
         }),
       });
       const { taskId } = await res.json();
@@ -91,13 +92,12 @@
     <button class="back" onclick={goBack}>← Home</button>
     <div class="menu-container">
       <button class="menu-trigger" onclick={() => showMenu = !showMenu}>⋮</button>
-      {#if showMenu}
-        <div class="menu-dropdown">
-          <button onclick={promptCustomUrl}>Custom YouTube URL</button>
-          <button onclick={() => startKaraoke()}>Force Redownload</button>
-        </div>
-      {/if}
-    </div>
+              {#if showMenu}
+                <div class="menu-dropdown">
+                  <button onclick={promptCustomUrl}>Custom YouTube URL</button>
+                  <button onclick={() => startKaraoke(undefined, true)}>Force Redownload</button>
+                </div>
+              {/if}    </div>
   </div>
 
   {#if showPlayer}
@@ -171,17 +171,17 @@
   }
 
   .back {
-    background: #000;
+    background: #1a1a1a;
     border: 1px solid #444;
-    color: #888;
+    color: #eee;
     padding: 0.5rem 1rem;
     cursor: pointer;
-    opacity: 0.4;
-    transition: opacity 0.2s;
+    border-radius: 4px;
+    transition: background 0.2s;
   }
 
   .back:hover {
-    opacity: 1;
+    background: #2a2a2a;
   }
 
   .menu-container {
@@ -189,20 +189,18 @@
   }
 
   .menu-trigger {
-    background: #000;
+    background: #1a1a1a;
     border: 1px solid #333;
     border-radius: 4px;
-    color: #444;
+    color: #eee;
     font-size: 1.2rem;
     cursor: pointer;
-    padding: 0.2rem 0.6rem;
-    opacity: 0.4;
-    transition: opacity 0.2s;
+    padding: 0.2rem 0.8rem;
+    transition: background 0.2s;
   }
 
   .menu-trigger:hover {
-    color: #888;
-    opacity: 1;
+    background: #2a2a2a;
   }
 
   .menu-dropdown {

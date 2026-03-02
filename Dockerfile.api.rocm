@@ -16,18 +16,16 @@ RUN apt-get update && apt-get install -y \
 
 # Install Bun
 RUN curl -fsSL https://bun.sh/install | bash
-ENV PATH="/root/.bun/bin:${PATH}"
+ENV PATH="/root/.bun/bin:/opt/karaoke_venv/bin:${PATH}"
 
 WORKDIR /app
 
 # Demucs and other python deps
-# We use the pre-installed torch from the ROCm image but force the index 
-# for any sub-dependencies to ensure they remain ROCm-compatible and don't pull NVIDIA versions.
-RUN pip3 install --no-cache-dir --index-url https://download.pytorch.org/whl/rocm6.0 \
-    yt-dlp \
-    demucs \
-    torchaudio \
-    && pip3 uninstall -y torchcodec || true
+RUN python3 -m venv /opt/karaoke_venv && \
+    /opt/karaoke_venv/bin/pip install --upgrade pip && \
+    /opt/karaoke_venv/bin/pip install --no-cache-dir yt-dlp demucs && \
+    /opt/karaoke_venv/bin/pip install --no-cache-dir --index-url https://download.pytorch.org/whl/rocm6.0 torchaudio \
+    && /opt/karaoke_venv/bin/pip uninstall -y torchcodec || true
 
 COPY package*.json ./
 RUN bun install

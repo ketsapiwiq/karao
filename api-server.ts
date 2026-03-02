@@ -149,7 +149,7 @@ async function runYtDlp(queryOrUrl: string, outputDir: string, slug: string, tas
 
 		console.log(`[yt-dlp] Starting with target: "${target}"`);
 
-		const ytDlp = spawn('python3', ytDlpArgs);
+		const ytDlp = spawn('/opt/karaoke_venv/bin/python3', ytDlpArgs);
 		
 		let stderr = '';
 		let stdout = '';
@@ -174,6 +174,7 @@ async function runYtDlp(queryOrUrl: string, outputDir: string, slug: string, tas
 
 		ytDlp.stderr.on('data', (d) => {
 			const output = d.toString();
+			console.error(`[yt-dlp] stderr: ${output}`);
 			stderr += output;
 			const match = output.match(/\[download\]\s+(\d+\.\d+)%/);
 			if (match) {
@@ -265,7 +266,7 @@ async function ensureWorkerRunning(): Promise<boolean> {
 	}
 
 	console.log('[api] Starting demucs worker...');
-	const worker = spawn('python3', ['demucs_worker.py'], {
+	const worker = spawn('/opt/karaoke_venv/bin/python3', ['demucs_worker.py'], {
 		detached: true,
 		stdio: 'inherit'
 	});

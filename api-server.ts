@@ -1,6 +1,6 @@
 import { Database } from 'bun:sqlite';
 import { spawn } from 'child_process';
-import { mkdir, access, readFile, stat } from 'fs/promises';
+import { mkdir, access, readFile, stat, rm } from 'fs/promises';
 import path from 'path';
 
 const DB_PATH = process.env.LRCLIB_DB || '/mnt/gloubinours2/lrclib-db-dump-20260122T091251Z.sqlite3';

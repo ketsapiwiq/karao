@@ -72,10 +72,10 @@
 
 	function handleKeydown(e: KeyboardEvent) {
 		// Shortcuts for offset
-		if (e.key === '[') adjustOffset(-0.1);
-		if (e.key === ']') adjustOffset(0.1);
-		if (e.key === '{') adjustOffset(-1.0);
-		if (e.key === '}') adjustOffset(1.0);
+		if (e.key === '[') adjustOffset(-1.0);
+		if (e.key === ']') adjustOffset(1.0);
+		if (e.key === '{') adjustOffset(-5.0);
+		if (e.key === '}') adjustOffset(5.0);
 		
 		// Media keys
 		if (e.code === 'Space') {
@@ -169,10 +169,10 @@
 	<div class="sync-controls">
 		<span class="offset-label">Sync: {offset > 0 ? '+' : ''}{offset.toFixed(1)}s</span>
 		<div class="buttons">
+			<button onclick={() => adjustOffset(-5)} title="-5s">-5</button>
 			<button onclick={() => adjustOffset(-1)} title="-1s">-1</button>
-			<button onclick={() => adjustOffset(-0.1)} title="-0.1s">-0.1</button>
-			<button onclick={() => adjustOffset(0.1)} title="+0.1s">+0.1</button>
 			<button onclick={() => adjustOffset(1)} title="+1s">+1</button>
+			<button onclick={() => adjustOffset(5)} title="+5s">+5</button>
 			<button class="reset" onclick={() => {
 				offset = 0;
 				if (trackName) localStorage.removeItem(`offset_${trackName}`);

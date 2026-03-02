@@ -117,7 +117,7 @@ async function handleDownload(artist: string, title: string, taskId: string): Pr
 			'-x', '--audio-format', 'mp3',
 			'--audio-quality', '0',
 			'-o', path.join(outputDir, `${slug}.%(ext)s`),
-			`ytsearch1:${artist} ${title}`
+			`ytsearch1:music.youtube.com:${artist} ${title}`
 		]);
 		
 		let stderr = '';

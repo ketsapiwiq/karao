@@ -135,6 +135,7 @@
             <span class="artist">{track.artist_name}</span>
             <span class="title">{track.name}</span>
             <span class="duration">{formatDuration(track.duration)}</span>
+            <a href="/song/{track.id}/{encodeURIComponent(track.name)}" class="permalink" onclick={(e) => e.stopPropagation()}>🔗</a>
           </li>
         {/each}
       </ul>
@@ -276,6 +277,18 @@
   .duration {
     margin-left: auto;
     color: #555;
+  }
+
+  .permalink {
+    text-decoration: none;
+    font-size: 0.8rem;
+    padding: 0 0.5rem;
+    color: #444;
+    transition: color 0.2s;
+  }
+
+  .permalink:hover {
+    color: #888;
   }
 
   .selected {

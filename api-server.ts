@@ -62,10 +62,11 @@ const tasks = new Map<string, {
 	progress: number,
 	error?: string,
 	resultUrl?: string,
+	originalUrl?: string,
 	stepSource?: string
 }>();
 
-async function handlePrepare(artist: string, title: string, customUrl?: string, force = false): Promise<any> {
+async function handlePrepare(artist: string, title: string, customUrl?: string, force = false, onlyDownload = false): Promise<any> {
 	const slug = `${artist} - ${title}`.replace(/[^a-zA-Z0-9 \-]/g, '');
 	const taskId = slug;
 
@@ -84,7 +85,12 @@ async function handlePrepare(artist: string, title: string, customUrl?: string, 
 	}
 
 	if (tasks.has(taskId) && tasks.get(taskId)?.status !== 'failed') {
-		console.log(`Task ${taskId} already exists with status: ${tasks.get(taskId)?.status}`);
+		const existingTask = tasks.get(taskId)!;
+		if (onlyDownload && existingTask.originalUrl && existingTask.status === 'processing' && existingTask.step === 'Separating (Demucs)') {
+			// If already downloaded and we only want download, we can mark as completed early for this requester
+			// But tasks is global. Better to just let frontend handle it if status is completed or processing.
+		}
+		console.log(`Task ${taskId} already exists with status: ${existingTask.status}`);
 		return { taskId };
 	}
 
@@ -97,6 +103,21 @@ async function handlePrepare(artist: string, title: string, customUrl?: string, 
 			const downloadResult = await handleDownload(artist, title, taskId, customUrl);
 			if (downloadResult.error) throw new Error(downloadResult.error);
 
+			const originalUrl = `/api/audio/audio/${slug}/${path.basename(downloadResult.path)}`;
+			tasks.set(taskId, { ...tasks.get(taskId)!, originalUrl });
+
+			if (onlyDownload) {
+				console.log(`Download for ${taskId} finished, skipping separation as requested.`);
+				tasks.set(taskId, { 
+					status: 'completed', 
+					step: 'Finished', 
+					progress: 100, 
+					resultUrl: originalUrl,
+					originalUrl
+				});
+				return;
+			}
+
 			console.log(`Download for ${taskId} finished, starting separation: ${downloadResult.path}`);
 			const separateResult = await handleSeparate(downloadResult.path, taskId);
 			if (separateResult.error) throw new Error(separateResult.error);
@@ -106,7 +127,8 @@ async function handlePrepare(artist: string, title: string, customUrl?: string, 
 				status: 'completed', 
 				step: 'Finished', 
 				progress: 100, 
-				resultUrl: separateResult.url 
+				resultUrl: separateResult.url,
+				originalUrl
 			});
 		} catch (err: any) {
 			console.error(`Task ${taskId} failed:`, err);
@@ -446,8 +468,8 @@ const server = Bun.serve({
 			}
 			else if (url.pathname === '/api/prepare' && req.method === 'POST') {
 				const body = await req.json();
-				const { artist, title, youtubeUrl, force } = body as { artist: string; title: string; youtubeUrl?: string; force?: boolean };
-				const result = await handlePrepare(artist, title, youtubeUrl, force);
+				const { artist, title, youtubeUrl, force, onlyDownload } = body as { artist: string; title: string; youtubeUrl?: string; force?: boolean; onlyDownload?: boolean };
+				const result = await handlePrepare(artist, title, youtubeUrl, force, onlyDownload);
 				return new Response(JSON.stringify(result), { 
 					headers: { ...corsHeaders, 'Content-Type': 'application/json' }
 				});

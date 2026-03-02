@@ -13,7 +13,7 @@
   let errorMsg = $state("");
   let showMenu = $state(false);
 
-  async function startKaraoke(customUrl?: string, force = false) {
+  async function startKaraoke(customUrl?: string, force = false, onlyDownload = false) {
     preparing = true;
     errorMsg = "";
     showMenu = false;
@@ -28,6 +28,7 @@
           title: track.name,
           youtubeUrl: customUrl,
           force,
+          onlyDownload,
         }),
       });
       const { taskId } = await res.json();
@@ -47,6 +48,12 @@
             } else if (task.status === "failed") {
               clearInterval(poll);
               errorMsg = "Preparation failed: " + task.error;
+              preparing = false;
+            } else if (onlyDownload && task.originalUrl) {
+              // If we only want original and it's already downloaded, we can start
+              clearInterval(poll);
+              instrumentalUrl = task.originalUrl;
+              showPlayer = true;
               preparing = false;
             }
           } catch (e) {
@@ -95,6 +102,7 @@
               {#if showMenu}
                 <div class="menu-dropdown">
                   <button onclick={promptCustomUrl}>Custom YouTube URL</button>
+                  <button onclick={() => startKaraoke(undefined, false, true)}>Use Original Audio</button>
                   <button onclick={() => startKaraoke(undefined, true)}>Force Redownload</button>
                 </div>
               {/if}    </div>

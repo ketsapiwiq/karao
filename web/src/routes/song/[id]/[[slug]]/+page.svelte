@@ -11,10 +11,12 @@
   let instrumentalUrl = $state("");
   let showPlayer = $state(false);
   let errorMsg = $state("");
+  let showMenu = $state(false);
 
-  async function startKaraoke() {
+  async function startKaraoke(customUrl?: string) {
     preparing = true;
     errorMsg = "";
+    showMenu = false;
     currentTask = { step: "Starting...", progress: 0 };
 
     try {
@@ -24,6 +26,7 @@
         body: JSON.stringify({
           artist: track.artist_name,
           title: track.name,
+          youtubeUrl: customUrl,
         }),
       });
       const { taskId } = await res.json();
@@ -70,6 +73,13 @@
   function goBack() {
     window.location.href = "/";
   }
+
+  function promptCustomUrl() {
+    const url = prompt("Enter a direct YouTube URL to use for this track:");
+    if (url && url.startsWith("http")) {
+      startKaraoke(url);
+    }
+  }
 </script>
 
 <svelte:head>
@@ -81,7 +91,18 @@
     <button class="back" onclick={goBack}>← Home</button>
     <KaraokePlayer {lyrics} audioSrc={instrumentalUrl} trackName={track.artist_name + " - " + track.name} />
   {:else}
-    <button class="back" onclick={goBack}>← Home</button>
+    <div class="header-row">
+      <button class="back" onclick={goBack}>← Home</button>
+      <div class="menu-container">
+        <button class="menu-trigger" onclick={() => showMenu = !showMenu}>⋮</button>
+        {#if showMenu}
+          <div class="menu-dropdown">
+            <button onclick={promptCustomUrl}>Custom YouTube URL</button>
+            <button onclick={() => startKaraoke()}>Force Redownload</button>
+          </div>
+        {/if}
+      </div>
+    </div>
     
     <div class="selected">
       <h1>{track.artist_name} - {track.name}</h1>
@@ -137,13 +158,65 @@
     padding: 2rem;
   }
 
+  .header-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 1rem;
+  }
+
   .back {
     background: none;
     border: 1px solid #444;
     color: #888;
     padding: 0.5rem 1rem;
     cursor: pointer;
-    margin-bottom: 1rem;
+  }
+
+  .menu-container {
+    position: relative;
+  }
+
+  .menu-trigger {
+    background: none;
+    border: none;
+    color: #444;
+    font-size: 1.5rem;
+    cursor: pointer;
+    padding: 0 0.5rem;
+  }
+
+  .menu-trigger:hover {
+    color: #888;
+  }
+
+  .menu-dropdown {
+    position: absolute;
+    top: 100%;
+    right: 0;
+    background: #1a1a1a;
+    border: 1px solid #333;
+    border-radius: 4px;
+    padding: 0.5rem 0;
+    z-index: 10;
+    width: 180px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+  }
+
+  .menu-dropdown button {
+    display: block;
+    width: 100%;
+    padding: 0.5rem 1rem;
+    text-align: left;
+    background: none;
+    border: none;
+    color: #eee;
+    cursor: pointer;
+    font-size: 0.9rem;
+  }
+
+  .menu-dropdown button:hover {
+    background: #2a2a2a;
   }
 
   .selected {

@@ -64,10 +64,23 @@ const tasks = new Map<string, {
 	resultUrl?: string
 }>();
 
-async function handlePrepare(artist: string, title: string): Promise<any> {
+async function handlePrepare(artist: string, title: string, customUrl?: string): Promise<any> {
 	const slug = `${artist} - ${title}`.replace(/[^a-zA-Z0-9 \-]/g, '');
 	const taskId = slug;
-	console.log(`Starting preparation for taskId: ${taskId}`);
+
+	if (customUrl) {
+		console.log(`Forcing re-preparation for ${taskId} with custom URL: ${customUrl}`);
+		tasks.delete(taskId);
+		// Cleanup existing directories
+		const audioDir = path.join(DATA_DIR, 'audio', slug);
+		const separatedDir = path.join(DATA_DIR, 'separated', 'htdemucs', slug);
+		try {
+			if (await fileExists(audioDir)) await rm(audioDir, { recursive: true, force: true });
+			if (await fileExists(separatedDir)) await rm(separatedDir, { recursive: true, force: true });
+		} catch (e) {
+			console.error(`Cleanup failed for ${taskId}:`, e);
+		}
+	}
 
 	if (tasks.has(taskId) && tasks.get(taskId)?.status !== 'failed') {
 		console.log(`Task ${taskId} already exists with status: ${tasks.get(taskId)?.status}`);
@@ -79,8 +92,8 @@ async function handlePrepare(artist: string, title: string): Promise<any> {
 	// Start background process
 	(async () => {
 		try {
-			console.log(`Background task ${taskId} started`);
-			const downloadResult = await handleDownload(artist, title, taskId);
+			console.log(`Background task ${taskId} started${customUrl ? ' with custom URL' : ''}`);
+			const downloadResult = await handleDownload(artist, title, taskId, customUrl);
 			if (downloadResult.error) throw new Error(downloadResult.error);
 
 			console.log(`Download for ${taskId} finished, starting separation`);
@@ -105,13 +118,17 @@ async function handlePrepare(artist: string, title: string): Promise<any> {
 async function runYtDlp(query: string, outputDir: string, slug: string, taskId: string, provider = 'ytsearch'): Promise<{ success: boolean; details?: string }> {
 	return new Promise((resolve) => {
 		console.log(`[yt-dlp] Starting ${provider} for query: "${query}"`);
+		
+		const isDirectUrl = query.startsWith('http');
+		const target = isDirectUrl ? query : `${provider}1:${query}`;
+
 		const ytDlp = spawn('yt-dlp', [
 			'-x', '--audio-format', 'mp3',
 			'--audio-quality', '0',
 			'--print', 'title,uploader,duration,webpage_url',
 			'--no-playlist',
 			'-o', path.join(outputDir, `${slug}.%(ext)s`),
-			`${provider}1:${query}`
+			target
 		]);
 		
 		let stderr = '';
@@ -150,17 +167,26 @@ async function runYtDlp(query: string, outputDir: string, slug: string, taskId: 
 	});
 }
 
-async function handleDownload(artist: string, title: string, taskId: string): Promise<any> {
+async function handleDownload(artist: string, title: string, taskId: string, customUrl?: string): Promise<any> {
 	const slug = `${artist} - ${title}`.replace(/[^a-zA-Z0-9 \-]/g, '');
 	const outputDir = path.join(DATA_DIR, 'audio', slug);
 	const finalPath = path.join(outputDir, `${slug}.mp3`);
 	
-	if (await fileExists(finalPath)) {
+	if (!customUrl && await fileExists(finalPath)) {
 		tasks.set(taskId, { status: 'processing', step: 'Download (Cached)', progress: 100 });
 		return { status: 'cached', path: finalPath, url: `/api/audio/audio/${slug}/${slug}.mp3` };
 	}
 	
 	await mkdir(outputDir, { recursive: true });
+
+	if (customUrl) {
+		tasks.set(taskId, { status: 'processing', step: 'Downloading custom URL...', progress: 0, stepSource: 'Manual URL' });
+		const attempt = await runYtDlp(customUrl, outputDir, slug, taskId);
+		if (attempt.success && await fileExists(finalPath)) {
+			return { status: 'downloaded', path: finalPath };
+		}
+		return { error: 'Custom URL download failed', details: attempt.details };
+	}
 	
 	// Attempt 1: YouTube Music - usually best for "Official Audio"
 	tasks.set(taskId, { status: 'processing', step: 'Searching YouTube Music...', progress: 0, stepSource: 'YouTube Music' });
@@ -361,8 +387,8 @@ const server = Bun.serve({
 			}
 			else if (url.pathname === '/api/prepare' && req.method === 'POST') {
 				const body = await req.json();
-				const { artist, title } = body as { artist: string; title: string };
-				const result = await handlePrepare(artist, title);
+				const { artist, title, youtubeUrl } = body as { artist: string; title: string; youtubeUrl?: string };
+				const result = await handlePrepare(artist, title, youtubeUrl);
 				return new Response(JSON.stringify(result), { 
 					headers: { ...corsHeaders, 'Content-Type': 'application/json' }
 				});

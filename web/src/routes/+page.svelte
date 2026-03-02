@@ -1,7 +1,8 @@
 <script lang="ts">
   import { goto } from "$app/navigation";
+  import { page as pageStore } from "$app/state";
 
-  let query = $state("");
+  let query = $state(pageStore.url.searchParams.get("s") || "");
   let results = $state<any[]>([]);
   let loading = $state(false);
   let page = $state(1);
@@ -10,6 +11,12 @@
 
   async function search(reset = true) {
     if (!query.trim()) return;
+    
+    // Update URL if we're starting a new search
+    if (reset && pageStore.url.searchParams.get("s") !== query) {
+      goto(`/?s=${encodeURIComponent(query)}`, { replaceState: true, keepFocus: true });
+    }
+
     loading = true;
     if (reset) {
       results = [];
@@ -33,6 +40,15 @@
     }
     loading = false;
   }
+
+  // Trigger search on mount if query param exists
+  $effect(() => {
+    const s = pageStore.url.searchParams.get("s");
+    if (s && !hasSearched) {
+      query = s;
+      search(true);
+    }
+  });
 
   function loadMore() {
     page += 1;

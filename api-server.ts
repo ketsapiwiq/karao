@@ -99,25 +99,13 @@ async function handlePrepare(artist: string, title: string): Promise<any> {
 
 	return { taskId };
 }
-async function handleDownload(artist: string, title: string, taskId: string): Promise<any> {
-	const slug = `${artist} - ${title}`.replace(/[^a-zA-Z0-9 \-]/g, '');
-	const outputDir = path.join(DATA_DIR, 'audio', slug);
-	const finalPath = path.join(outputDir, `${slug}.mp3`);
-	
-	if (await fileExists(finalPath)) {
-		tasks.set(taskId, { status: 'processing', step: 'Download (Cached)', progress: 100 });
-		return { status: 'cached', path: finalPath, url: `/api/audio/audio/${slug}/${slug}.mp3` };
-	}
-	
-	await mkdir(outputDir, { recursive: true });
-	tasks.set(taskId, { status: 'processing', step: 'Searching & Downloading', progress: 0 });
-	
+async function runYtDlp(query: string, outputDir: string, slug: string, taskId: string): Promise<{ success: boolean; details?: string }> {
 	return new Promise((resolve) => {
 		const ytDlp = spawn('yt-dlp', [
 			'-x', '--audio-format', 'mp3',
 			'--audio-quality', '0',
 			'-o', path.join(outputDir, `${slug}.%(ext)s`),
-			`ytsearch1:music.youtube.com:${artist} ${title}`
+			`ytsearch1:${query}`
 		]);
 		
 		let stderr = '';
@@ -132,19 +120,54 @@ async function handleDownload(artist: string, title: string, taskId: string): Pr
 		ytDlp.stderr.on('data', (d) => stderr += d.toString());
 		
 		ytDlp.on('close', async (code) => {
-			console.log(`yt-dlp exited with code ${code}`);
+			console.log(`yt-dlp exited with code ${code} for query: ${query}`);
 			if (code !== 0) {
-				resolve({ error: 'Download failed', details: stderr });
+				resolve({ success: false, details: stderr });
 				return;
 			}
-			resolve({ status: 'downloaded', path: finalPath });
+			resolve({ success: true });
 		});
 		
 		ytDlp.on('error', (err) => {
 			console.error('Failed to start yt-dlp:', err);
-			resolve({ error: 'Failed to start yt-dlp', details: err.message });
+			resolve({ success: false, details: err.message });
 		});
 	});
+}
+
+async function handleDownload(artist: string, title: string, taskId: string): Promise<any> {
+	const slug = `${artist} - ${title}`.replace(/[^a-zA-Z0-9 \-]/g, '');
+	const outputDir = path.join(DATA_DIR, 'audio', slug);
+	const finalPath = path.join(outputDir, `${slug}.mp3`);
+	
+	if (await fileExists(finalPath)) {
+		tasks.set(taskId, { status: 'processing', step: 'Download (Cached)', progress: 100 });
+		return { status: 'cached', path: finalPath, url: `/api/audio/audio/${slug}/${slug}.mp3` };
+	}
+	
+	await mkdir(outputDir, { recursive: true });
+	tasks.set(taskId, { status: 'processing', step: 'Searching YouTube Music...', progress: 0 });
+	
+	// Attempt 1: YouTube Music / Official Audio
+	const query1 = `${artist} ${title} (Official Audio)`;
+	const attempt1 = await runYtDlp(query1, outputDir, slug, taskId);
+	
+	if (attempt1.success && await fileExists(finalPath)) {
+		return { status: 'downloaded', path: finalPath };
+	}
+	
+	console.log(`YouTube Music search failed or yielded no file, falling back to general search...`);
+	tasks.set(taskId, { status: 'processing', step: 'Falling back to general YouTube...', progress: 0 });
+	
+	// Attempt 2: General YouTube search
+	const query2 = `${artist} ${title}`;
+	const attempt2 = await runYtDlp(query2, outputDir, slug, taskId);
+	
+	if (attempt2.success && await fileExists(finalPath)) {
+		return { status: 'downloaded', path: finalPath };
+	}
+	
+	return { error: 'Download failed', details: attempt2.details || attempt1.details };
 }
 
 async function handleSeparate(audioPath: string, taskId: string): Promise<any> {

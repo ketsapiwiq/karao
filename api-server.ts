@@ -115,12 +115,21 @@ async function handlePrepare(artist: string, title: string, customUrl?: string, 
 
 	return { taskId };
 }
-async function runYtDlp(query: string, outputDir: string, slug: string, taskId: string, provider = 'ytsearch'): Promise<{ success: boolean; details?: string }> {
+async function runYtDlp(queryOrUrl: string, outputDir: string, slug: string, taskId: string, provider = 'ytsearch'): Promise<{ success: boolean; details?: string }> {
 	return new Promise((resolve) => {
-		console.log(`[yt-dlp] Starting ${provider} for query: "${query}"`);
-		
-		const isDirectUrl = query.startsWith('http');
-		const target = isDirectUrl ? query : `${provider}1:${query}`;
+		const isDirectUrl = queryOrUrl.startsWith('http');
+		let target: string;
+		if (isDirectUrl) {
+			target = queryOrUrl;
+		} else if (provider.startsWith('http')) {
+			// If provider is a search URL, append the query
+			target = `${provider}${encodeURIComponent(queryOrUrl)}`;
+		} else {
+			// Default prefix logic (e.g., ytsearch1:)
+			target = `${provider}1:${queryOrUrl}`;
+		}
+
+		console.log(`[yt-dlp] Starting with target: "${target}"`);
 
 		const ytDlpArgs = [
 			'-x', '--audio-format', 'mp3',
@@ -132,7 +141,7 @@ async function runYtDlp(query: string, outputDir: string, slug: string, taskId: 
 		];
 
 		// Exclude live and karaoke from searches (but not direct URLs)
-		if (!isDirectUrl) {
+		if (!isDirectUrl && !provider.includes('music.youtube.com')) {
 			ytDlpArgs.splice(-1, 0, '--match-filter', 'title !~* "live" & title !~* "karaoke"');
 		}
 
@@ -159,7 +168,7 @@ async function runYtDlp(query: string, outputDir: string, slug: string, taskId: 
 		ytDlp.stderr.on('data', (d) => stderr += d.toString());
 		
 		ytDlp.on('close', async (code) => {
-			console.log(`[yt-dlp] exited with code ${code} for query: ${query}`);
+			console.log(`[yt-dlp] exited with code ${code} for target: ${target}`);
 			if (code !== 0) {
 				resolve({ success: false, details: stderr });
 				return;
@@ -195,27 +204,36 @@ async function handleDownload(artist: string, title: string, taskId: string, cus
 		return { error: 'Custom URL download failed', details: attempt.details };
 	}
 	
-	// Attempt 1: General YouTube search with "(Official Audio)" suffix - often more reliable than YT Music search
-	tasks.set(taskId, { status: 'processing', step: 'Searching YouTube...', progress: 0, stepSource: 'YouTube' });
-	const query1 = `${artist} ${title} (Official Audio)`;
+	// Attempt 1: Precise YouTube search with quoted artist and title
+	tasks.set(taskId, { status: 'processing', step: 'Searching YouTube (Precise)...', progress: 0, stepSource: 'YouTube' });
+	const query1 = `"${artist}" "${title}"`;
 	const attempt1 = await runYtDlp(query1, outputDir, slug, taskId, 'ytsearch');
 	
 	if (attempt1.success && await fileExists(finalPath)) {
 		return { status: 'downloaded', path: finalPath };
 	}
-	
-	console.log(`[api] Primary search failed for "${query1}", falling back to YT Music...`);
-	tasks.set(taskId, { status: 'processing', step: 'Falling back to YT Music...', progress: 0, stepSource: 'YouTube Music' });
-	
-	// Attempt 2: YouTube Music search
-	const query2 = `${artist} ${title}`;
-	const attempt2 = await runYtDlp(query2, outputDir, slug, taskId, 'https://music.youtube.com/search?q=');
+
+	// Attempt 2: YouTube search with (Official Audio)
+	tasks.set(taskId, { status: 'processing', step: 'Searching YouTube (Official Audio)...', progress: 0, stepSource: 'YouTube' });
+	const query2 = `${artist} ${title} (Official Audio)`;
+	const attempt2 = await runYtDlp(query2, outputDir, slug, taskId, 'ytsearch');
 	
 	if (attempt2.success && await fileExists(finalPath)) {
 		return { status: 'downloaded', path: finalPath };
 	}
 	
-	return { error: 'Download failed', details: attempt2.details || attempt1.details };
+	console.log(`[api] YouTube search failed for "${query1}" and "${query2}", falling back to YT Music...`);
+	tasks.set(taskId, { status: 'processing', step: 'Falling back to YT Music...', progress: 0, stepSource: 'YouTube Music' });
+	
+	// Attempt 3: YouTube Music search
+	const query3 = `${artist} ${title}`;
+	const attempt3 = await runYtDlp(query3, outputDir, slug, taskId, 'https://music.youtube.com/search?q=');
+	
+	if (attempt3.success && await fileExists(finalPath)) {
+		return { status: 'downloaded', path: finalPath };
+	}
+	
+	return { error: 'Download failed', details: attempt3.details || attempt2.details || attempt1.details };
 }
 
 async function handleSeparate(audioPath: string, taskId: string): Promise<any> {

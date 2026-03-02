@@ -285,7 +285,7 @@ async function ensureWorkerRunning(): Promise<boolean> {
 	}
 
 	console.log('[api] Starting demucs worker...');
-	const worker = spawn('/opt/karaoke_venv/bin/python3', ['demucs_worker.py'], {
+	const worker = spawn('python3', ['demucs_worker.py'], {
 		detached: true,
 		stdio: 'inherit'
 	});

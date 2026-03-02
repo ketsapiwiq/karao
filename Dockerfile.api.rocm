@@ -1,8 +1,7 @@
 FROM rocm/pytorch:latest
 
-# Use the PyTorch ROCm image as it's the most stable for demucs/torch
-# Even though host is 7.2.0, this should be compatible.
-# We'll need to install Bun and other deps.
+# The rocm/pytorch image already has ROCm-enabled PyTorch installed globally.
+# We must NOT create a venv or reinstall torch, as it often breaks the ROCm build.
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV HSA_OVERRIDE_GFX_VERSION=10.3.0
@@ -16,16 +15,15 @@ RUN apt-get update && apt-get install -y \
 
 # Install Bun
 RUN curl -fsSL https://bun.sh/install | bash
-ENV PATH="/root/.bun/bin:/opt/karaoke_venv/bin:${PATH}"
+ENV PATH="/root/.bun/bin:${PATH}"
 
 WORKDIR /app
 
-# Demucs and other python deps
-RUN python3 -m venv /opt/karaoke_venv && \
-    /opt/karaoke_venv/bin/pip install --upgrade pip && \
-    /opt/karaoke_venv/bin/pip install --no-cache-dir yt-dlp demucs && \
-    /opt/karaoke_venv/bin/pip install --no-cache-dir --index-url https://download.pytorch.org/whl/rocm6.0 torchaudio \
-    && /opt/karaoke_venv/bin/pip uninstall -y torchcodec || true
+# Install ONLY the missing dependencies globally using the system python.
+# We use --break-system-packages (or just pip install since we are in a container)
+# to add demucs and yt-dlp to the existing ROCm-enabled environment.
+RUN python3 -m pip install --upgrade pip && \
+    python3 -m pip install --no-cache-dir yt-dlp demucs
 
 COPY package*.json ./
 RUN bun install
@@ -34,4 +32,5 @@ COPY api-server.ts demucs_worker.py ./
 
 EXPOSE 3001
 
+# The worker and api should use the global python3
 CMD ["bun", "run", "api-server.ts"]

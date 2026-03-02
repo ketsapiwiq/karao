@@ -64,22 +64,27 @@ const tasks = new Map<string, {
 async function handlePrepare(artist: string, title: string): Promise<any> {
 	const slug = `${artist} - ${title}`.replace(/[^a-zA-Z0-9 \-]/g, '');
 	const taskId = slug;
-	
+	console.log(`Starting preparation for taskId: ${taskId}`);
+
 	if (tasks.has(taskId) && tasks.get(taskId)?.status !== 'failed') {
+		console.log(`Task ${taskId} already exists with status: ${tasks.get(taskId)?.status}`);
 		return { taskId };
 	}
 
 	tasks.set(taskId, { status: 'pending', step: 'Initializing', progress: 0 });
-	
+
 	// Start background process
 	(async () => {
 		try {
+			console.log(`Background task ${taskId} started`);
 			const downloadResult = await handleDownload(artist, title, taskId);
 			if (downloadResult.error) throw new Error(downloadResult.error);
-			
+
+			console.log(`Download for ${taskId} finished, starting separation`);
 			const separateResult = await handleSeparate(downloadResult.path, taskId);
 			if (separateResult.error) throw new Error(separateResult.error);
-			
+
+			console.log(`Separation for ${taskId} finished`);
 			tasks.set(taskId, { 
 				status: 'completed', 
 				step: 'Finished', 
@@ -94,7 +99,6 @@ async function handlePrepare(artist: string, title: string): Promise<any> {
 
 	return { taskId };
 }
-
 async function handleDownload(artist: string, title: string, taskId: string): Promise<any> {
 	const slug = `${artist} - ${title}`.replace(/[^a-zA-Z0-9 \-]/g, '');
 	const outputDir = path.join(DATA_DIR, 'audio', slug);
@@ -172,6 +176,7 @@ async function handleSeparate(audioPath: string, taskId: string): Promise<any> {
 		let stderr = '';
 		demucs.stdout.on('data', (d) => {
 			const line = d.toString();
+			console.log(`[demucs stdout] ${line.trim()}`);
 			// Demucs progress bar look: 10%|███       | 10/100
 			const match = line.match(/(\d+)%/);
 			if (match) {
@@ -180,9 +185,11 @@ async function handleSeparate(audioPath: string, taskId: string): Promise<any> {
 			}
 		});
 		demucs.stderr.on('data', (d) => {
-			stderr += d.toString();
+			const line = d.toString();
+			console.log(`[demucs stderr] ${line.trim()}`);
+			stderr += line;
 			// Demucs often writes progress to stderr
-			const match = d.toString().match(/(\d+)%/);
+			const match = line.match(/(\d+)%/);
 			if (match) {
 				const progress = parseInt(match[1], 10);
 				tasks.set(taskId, { status: 'processing', step: 'Separating', progress });
@@ -317,9 +324,11 @@ const server = Bun.serve({
 				});
 			}
 			else if (url.pathname.startsWith('/api/tasks/')) {
-				const taskId = url.pathname.replace('/api/tasks/', '');
+				const taskId = decodeURIComponent(url.pathname.replace('/api/tasks/', ''));
+				console.log(`Polling task: "${taskId}"`);
 				const task = tasks.get(taskId);
 				if (!task) {
+					console.log(`Task not found for ID: "${taskId}". Available tasks: ${Array.from(tasks.keys()).join(', ')}`);
 					return new Response(JSON.stringify({ error: 'Task not found' }), { 
 						status: 404, 
 						headers: { ...corsHeaders, 'Content-Type': 'application/json' }

@@ -122,14 +122,21 @@ async function runYtDlp(query: string, outputDir: string, slug: string, taskId: 
 		const isDirectUrl = query.startsWith('http');
 		const target = isDirectUrl ? query : `${provider}1:${query}`;
 
-		const ytDlp = spawn('yt-dlp', [
+		const ytDlpArgs = [
 			'-x', '--audio-format', 'mp3',
 			'--audio-quality', '0',
 			'--print', 'title,uploader,duration,webpage_url',
 			'--no-playlist',
 			'-o', path.join(outputDir, `${slug}.%(ext)s`),
 			target
-		]);
+		];
+
+		// Exclude live and karaoke from searches (but not direct URLs)
+		if (!isDirectUrl) {
+			ytDlpArgs.splice(-1, 0, '--match-filter', 'title !~* "live" & title !~* "karaoke"');
+		}
+
+		const ytDlp = spawn('yt-dlp', ytDlpArgs);
 		
 		let stderr = '';
 		let metadataLogged = false;
@@ -188,21 +195,21 @@ async function handleDownload(artist: string, title: string, taskId: string, cus
 		return { error: 'Custom URL download failed', details: attempt.details };
 	}
 	
-	// Attempt 1: YouTube Music - usually best for "Official Audio"
-	tasks.set(taskId, { status: 'processing', step: 'Searching YouTube Music...', progress: 0, stepSource: 'YouTube Music' });
-	const query1 = `${artist} ${title}`; 
-	const attempt1 = await runYtDlp(query1, outputDir, slug, taskId, 'https://music.youtube.com/search?q=');
+	// Attempt 1: General YouTube search with "(Official Audio)" suffix - often more reliable than YT Music search
+	tasks.set(taskId, { status: 'processing', step: 'Searching YouTube...', progress: 0, stepSource: 'YouTube' });
+	const query1 = `${artist} ${title} (Official Audio)`;
+	const attempt1 = await runYtDlp(query1, outputDir, slug, taskId, 'ytsearch');
 	
 	if (attempt1.success && await fileExists(finalPath)) {
 		return { status: 'downloaded', path: finalPath };
 	}
 	
-	console.log(`[api] YouTube Music search failed for "${query1}", falling back to general search...`);
-	tasks.set(taskId, { status: 'processing', step: 'Falling back to general YouTube...', progress: 0, stepSource: 'YouTube General' });
+	console.log(`[api] Primary search failed for "${query1}", falling back to YT Music...`);
+	tasks.set(taskId, { status: 'processing', step: 'Falling back to YT Music...', progress: 0, stepSource: 'YouTube Music' });
 	
-	// Attempt 2: General YouTube search with "(Official Audio)" suffix
-	const query2 = `${artist} ${title} (Official Audio)`;
-	const attempt2 = await runYtDlp(query2, outputDir, slug, taskId, 'ytsearch');
+	// Attempt 2: YouTube Music search
+	const query2 = `${artist} ${title}`;
+	const attempt2 = await runYtDlp(query2, outputDir, slug, taskId, 'https://music.youtube.com/search?q=');
 	
 	if (attempt2.success && await fileExists(finalPath)) {
 		return { status: 'downloaded', path: finalPath };

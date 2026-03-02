@@ -68,11 +68,14 @@ const tasks = new Map<string, {
 }>();
 
 async function handlePrepare(artist: string, title: string, customUrl?: string, force = false, onlyDownload = false): Promise<any> {
+	// Ensure customUrl is a string or undefined
+	const actualCustomUrl = typeof customUrl === 'string' ? customUrl : undefined;
+	
 	const slug = `${artist} - ${title}`.replace(/[^a-zA-Z0-9 \-]/g, '');
 	const taskId = slug;
 
-	if (customUrl || force) {
-		console.log(`Forcing re-preparation for ${taskId}${customUrl ? ` with custom URL: ${customUrl}` : ''}`);
+	if (actualCustomUrl || force) {
+		console.log(`Forcing re-preparation for ${taskId}${actualCustomUrl ? ` with custom URL: ${actualCustomUrl}` : ''}`);
 		tasks.delete(taskId);
 		// Cleanup existing directories/files
 		const audioDir = path.join(DATA_DIR, 'audio', slug);
@@ -94,8 +97,8 @@ async function handlePrepare(artist: string, title: string, customUrl?: string, 
 	// Start background process
 	(async () => {
 		try {
-			console.log(`Background task ${taskId} started${customUrl ? ' with custom URL' : ''}`);
-			const downloadResult = await handleDownload(artist, title, taskId, customUrl);
+			console.log(`Background task ${taskId} started${actualCustomUrl ? ' with custom URL' : ''}`);
+			const downloadResult = await handleDownload(artist, title, taskId, actualCustomUrl);
 			if (downloadResult.error) throw new Error(downloadResult.error);
 
 			const originalUrl = `/api/audio/audio/${slug}/${slug}.mp3`;

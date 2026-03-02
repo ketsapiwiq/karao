@@ -1,11 +1,9 @@
 <script lang="ts">
-  import KaraokePlayer from "$lib/KaraokePlayer.svelte";
-  import { browser } from "$app/environment";
   import { goto } from "$app/navigation";
 
-  let query = "";
-  let results: any[] = [];
-  let loading = false;
+  let query = $state("");
+  let results = $state<any[]>([]);
+  let loading = $state(false);
 
   async function search() {
     if (!query.trim()) return;
@@ -27,63 +25,11 @@
     goto(`/song/${track.id}/${encodeURIComponent(track.name)}`);
   }
 
-  async function startKaraoke() {
-    if (!selectedTrack) return;
-    preparing = true;
-    currentTask = { step: "Starting...", progress: 0 };
-
-    try {
-      const res = await fetch(`/api/prepare`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          artist: selectedTrack.artist_name,
-          title: selectedTrack.name,
-        }),
-      });
-      const { taskId } = await res.json();
-
-      if (taskId) {
-        const poll = setInterval(async () => {
-          try {
-            const taskRes = await fetch(`/api/tasks/${taskId}`);
-            const task = await taskRes.json();
-            currentTask = task;
-
-            if (task.status === "completed") {
-              clearInterval(poll);
-              instrumentalUrl = task.resultUrl;
-              showPlayer = true;
-              preparing = false;
-            } else if (task.status === "failed") {
-              clearInterval(poll);
-              alert("Preparation failed: " + task.error);
-              preparing = false;
-            }
-          } catch (e) {
-            console.error("Polling error:", e);
-          }
-        }, 1000);
-      } else {
-        alert("Failed to start preparation");
-        preparing = false;
-      }
-    } catch (e) {
-      console.error(e);
-      preparing = false;
-    }
-  }
-
   function formatDuration(seconds: number | null): string {
     if (!seconds) return "--:--";
     const mins = Math.floor(seconds / 60);
     const secs = Math.floor(seconds % 60);
     return `${mins}:${secs.toString().padStart(2, "0")}`;
-  }
-
-  function goBack() {
-    showPlayer = false;
-    instrumentalUrl = "";
   }
 </script>
 
@@ -145,15 +91,6 @@
     margin-bottom: 2rem;
   }
 
-  .back {
-    background: none;
-    border: 1px solid #444;
-    color: #888;
-    padding: 0.5rem 1rem;
-    cursor: pointer;
-    margin-bottom: 1rem;
-  }
-
   .search {
     display: flex;
     gap: 0.5rem;
@@ -205,14 +142,11 @@
     border-bottom: 1px solid #222;
     display: flex;
     gap: 0.5rem;
+    align-items: center;
   }
 
   .results li:hover {
     background: #111;
-  }
-  .results li.selected {
-    background: #1a1a2e;
-    border-left: 3px solid #646cff;
   }
 
   .artist {
@@ -237,66 +171,4 @@
   .permalink:hover {
     color: #888;
   }
-
-  .selected {
-    background: #111;
-    padding: 1.5rem;
-    border-radius: 8px;
-    margin-top: 1rem;
-  }
-
-  .selected h2 {
-    margin-top: 0;
-  }
-
-  .lyrics-preview {
-    background: #0a0a0a;
-    padding: 1rem;
-    font-family: monospace;
-    white-space: pre-wrap;
-    margin: 1rem 0;
-    font-size: 0.9rem;
-    color: #888;
-    border-radius: 4px;
-    max-height: 200px;
-    overflow: hidden;
-  }
-
-  .actions {
-    display: flex;
-    gap: 0.5rem;
-    flex-wrap: wrap;
-    width: 100%;
-  }
-
-  .progress-container {
-    width: 100%;
-    background: #1a1a1a;
-    padding: 1rem;
-    border-radius: 4px;
-    border: 1px solid #333;
-  }
-
-  .progress-header {
-    display: flex;
-    justify-content: space-between;
-    margin-bottom: 0.5rem;
-    font-size: 0.9rem;
-    color: #aaa;
-  }
-
-  .progress-bar {
-    width: 100%;
-    height: 8px;
-    background: #333;
-    border-radius: 4px;
-    overflow: hidden;
-  }
-
-  .progress-fill {
-    height: 100%;
-    background: #646cff;
-    transition: width 0.3s ease;
-  }
 </style>
-

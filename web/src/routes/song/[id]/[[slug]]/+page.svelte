@@ -110,9 +110,7 @@
 
       {#if lyrics && !showPlayer}
         <div class="lyrics-preview">
-          {lyrics.split("
-").slice(0, 15).join("
-")}...
+          {lyrics.split("\n").slice(0, 15).join("\n")}...
         </div>
       {/if}
     </div>

@@ -50,6 +50,14 @@
     }
   });
 
+  // Reset search state when user edits query
+  $effect(() => {
+    if (query !== pageStore.url.searchParams.get("s")) {
+      hasSearched = false;
+      results = [];
+    }
+  });
+
   function loadMore() {
     page += 1;
     search(false);

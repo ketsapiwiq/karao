@@ -87,23 +87,22 @@
 </svelte:head>
 
 <div class="container">
-  {#if showPlayer}
+  <div class="header-row">
     <button class="back" onclick={goBack}>← Home</button>
+    <div class="menu-container">
+      <button class="menu-trigger" onclick={() => showMenu = !showMenu}>⋮</button>
+      {#if showMenu}
+        <div class="menu-dropdown">
+          <button onclick={promptCustomUrl}>Custom YouTube URL</button>
+          <button onclick={() => startKaraoke()}>Force Redownload</button>
+        </div>
+      {/if}
+    </div>
+  </div>
+
+  {#if showPlayer}
     <KaraokePlayer {lyrics} audioSrc={instrumentalUrl} trackName={track.artist_name + " - " + track.name} />
   {:else}
-    <div class="header-row">
-      <button class="back" onclick={goBack}>← Home</button>
-      <div class="menu-container">
-        <button class="menu-trigger" onclick={() => showMenu = !showMenu}>⋮</button>
-        {#if showMenu}
-          <div class="menu-dropdown">
-            <button onclick={promptCustomUrl}>Custom YouTube URL</button>
-            <button onclick={() => startKaraoke()}>Force Redownload</button>
-          </div>
-        {/if}
-      </div>
-    </div>
-    
     <div class="selected">
       <h1>{track.artist_name} - {track.name}</h1>
 
@@ -155,7 +154,8 @@
   .container {
     max-width: 800px;
     margin: 0 auto;
-    padding: 2rem;
+    padding: 6rem 2rem 2rem 2rem;
+    position: relative;
   }
 
   .header-row {
@@ -163,14 +163,25 @@
     justify-content: space-between;
     align-items: flex-start;
     margin-bottom: 1rem;
+    position: absolute;
+    top: 2rem;
+    left: 2rem;
+    right: 2rem;
+    z-index: 20;
   }
 
   .back {
-    background: none;
+    background: #000;
     border: 1px solid #444;
     color: #888;
     padding: 0.5rem 1rem;
     cursor: pointer;
+    opacity: 0.4;
+    transition: opacity 0.2s;
+  }
+
+  .back:hover {
+    opacity: 1;
   }
 
   .menu-container {
@@ -178,16 +189,20 @@
   }
 
   .menu-trigger {
-    background: none;
-    border: none;
+    background: #000;
+    border: 1px solid #333;
+    border-radius: 4px;
     color: #444;
-    font-size: 1.5rem;
+    font-size: 1.2rem;
     cursor: pointer;
-    padding: 0 0.5rem;
+    padding: 0.2rem 0.6rem;
+    opacity: 0.4;
+    transition: opacity 0.2s;
   }
 
   .menu-trigger:hover {
     color: #888;
+    opacity: 1;
   }
 
   .menu-dropdown {

@@ -218,14 +218,18 @@ async function handleSeparate(audioPath: string, taskId: string): Promise<any> {
 }
 
 async function handleAudio(filePath: string, req: Request): Promise<Response> {
-	const fullPath = path.join(DATA_DIR, filePath);
+	const decodedPath = decodeURIComponent(filePath);
+	const fullPath = path.join(DATA_DIR, decodedPath);
+	console.log(`Serving audio from: "${fullPath}"`);
 	
 	try {
 		const stats = await stat(fullPath);
 		if (!stats.isFile()) {
+			console.log(`Audio file not found: "${fullPath}"`);
 			return new Response('Not found', { status: 404 });
 		}
-	} catch {
+	} catch (e: any) {
+		console.log(`Error stating audio file: "${fullPath}" - ${e.message}`);
 		return new Response('Not found', { status: 404 });
 	}
 	

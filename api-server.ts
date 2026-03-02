@@ -27,12 +27,11 @@ async function handleSearch(q: string): Promise<any[]> {
 	const sql = `
 		SELECT t.id, t.name, t.artist_name, t.album_name, t.duration,
 			   l.has_synced_lyrics, l.has_plain_lyrics
-		FROM (
-			SELECT rowid FROM tracks_fts WHERE tracks_fts MATCH ? LIMIT 500
-		) fts
-		JOIN tracks t ON fts.rowid = t.id
-		JOIN lyrics l ON t.last_lyrics_id = l.id
-		WHERE l.has_synced_lyrics = 1 
+		FROM tracks_fts fts
+		CROSS JOIN tracks t ON fts.rowid = t.id
+		CROSS JOIN lyrics l ON t.last_lyrics_id = l.id
+		WHERE tracks_fts MATCH ? 
+		  AND l.has_synced_lyrics = 1 
 		  AND l.synced_lyrics IS NOT NULL
 		  AND l.synced_lyrics != ''
 		LIMIT 20
@@ -129,11 +128,17 @@ async function handleDownload(artist: string, title: string, taskId: string): Pr
 		ytDlp.stderr.on('data', (d) => stderr += d.toString());
 		
 		ytDlp.on('close', async (code) => {
+			console.log(`yt-dlp exited with code ${code}`);
 			if (code !== 0) {
 				resolve({ error: 'Download failed', details: stderr });
 				return;
 			}
 			resolve({ status: 'downloaded', path: finalPath });
+		});
+		
+		ytDlp.on('error', (err) => {
+			console.error('Failed to start yt-dlp:', err);
+			resolve({ error: 'Failed to start yt-dlp', details: err.message });
 		});
 	});
 }
@@ -185,6 +190,7 @@ async function handleSeparate(audioPath: string, taskId: string): Promise<any> {
 		});
 		
 		demucs.on('close', async (code) => {
+			console.log(`demucs exited with code ${code}`);
 			if (code !== 0) {
 				resolve({ error: 'Separation failed', details: stderr });
 				return;
@@ -195,6 +201,11 @@ async function handleSeparate(audioPath: string, taskId: string): Promise<any> {
 				instrumentalPath,
 				url: `/api/audio/separated/htdemucs/${basename}/no_vocals.wav`
 			});
+		});
+
+		demucs.on('error', (err) => {
+			console.error('Failed to start demucs:', err);
+			resolve({ error: 'Failed to start demucs', details: err.message });
 		});
 	});
 }

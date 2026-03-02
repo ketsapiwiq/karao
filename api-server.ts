@@ -101,8 +101,9 @@ async function handlePrepare(artist: string, title: string, customUrl?: string, 
 			const downloadResult = await handleDownload(artist, title, taskId, actualCustomUrl);
 			if (downloadResult.error) throw new Error(downloadResult.error);
 
-			const originalUrl = `/api/audio/audio/${slug}/${slug}.mp3`;
-			const videoUrl = downloadResult.videoPath ? `/api/audio/audio/${slug}/${slug}.mp4` : undefined;
+			// Slug used in handleDownload and runYtDlp is taskId or artist - title
+			const originalUrl = `/api/audio/audio/${taskId}/${taskId}.mp3`;
+			const videoUrl = downloadResult.videoPath ? `/api/audio/audio/${taskId}/${taskId}.mp4` : undefined;
 			
 			tasks.set(taskId, { ...tasks.get(taskId)!, originalUrl, videoUrl });
 

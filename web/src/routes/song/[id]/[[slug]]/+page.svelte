@@ -56,7 +56,7 @@
 
             if (task.status === "completed") {
               clearInterval(poll);
-              instrumentalUrl = task.resultUrl;
+              instrumentalUrl = (onlyDownload && task.originalUrl) ? task.originalUrl : task.resultUrl;
               videoUrl = task.videoUrl || "";
               showPlayer = true;
               preparing = false;

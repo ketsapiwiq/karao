@@ -9,12 +9,12 @@ RUN apt-get update && apt-get install -y \
     nodejs \
     && rm -rf /var/lib/apt/lists/*
 
-RUN pip3 install --break-system-packages yt-dlp demucs torchcodec
+RUN pip3 install --break-system-packages yt-dlp demucs torchaudio
 
 COPY package*.json ./
 RUN bun install
 
-COPY api-server.ts ./
+COPY api-server.ts demucs_worker.py ./
 
 EXPOSE 3001
 

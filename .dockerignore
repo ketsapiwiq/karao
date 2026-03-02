@@ -1,0 +1,12 @@
+node_modules
+.venv
+venv
+__pycache__
+.git
+web/node_modules
+web/build
+.svelte-kit
+data
+separated
+audio
+*.sqlite3

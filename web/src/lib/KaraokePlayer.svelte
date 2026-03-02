@@ -115,27 +115,25 @@
 		lines[currentLineIndex + 1] || null
 	]);
 
-	// Calculate progress to next line for the loading bar
+	// Calculate progress for the initial buildup bar
 	let showLoadingBar = $derived.by(() => {
-		if (!lines.length) return false;
-		const nextLine = lines[currentLineIndex + 1];
+		if (!lines.length || currentLineIndex !== -1) return false;
+		const nextLine = lines[0];
 		if (!nextLine) return false;
 		
-		const currentLineTime = currentLineIndex >= 0 ? lines[currentLineIndex].time : 0;
-		const gap = nextLine.time - currentLineTime;
-		
-		// Show if it's the buildup to the first line OR a big break
-		return currentLineIndex === -1 || gap > 5;
+		const adjustedTime = currentTime + offset;
+		// Hide when the first line starts
+		return adjustedTime < nextLine.time;
 	});
 
 	let loadingProgress = $derived.by(() => {
 		if (!showLoadingBar) return 0;
-		const nextLine = lines[currentLineIndex + 1];
-		const currentLineTime = currentLineIndex >= 0 ? lines[currentLineIndex].time : 0;
-		const totalWait = nextLine.time - currentLineTime;
-		const elapsed = (currentTime + offset) - currentLineTime;
+		const nextLine = lines[0];
+		// Reach 100% one second before the line starts
+		const targetTime = Math.max(0.1, nextLine.time - 1);
+		const elapsed = currentTime + offset;
 		
-		return Math.min(Math.max(elapsed / totalWait, 0), 1);
+		return Math.min(Math.max(elapsed / targetTime, 0), 1);
 	});
 </script>
 
@@ -202,11 +200,12 @@
 	
 	.lyrics-display {
 		text-align: center;
-		min-height: 250px;
+		min-height: 350px;
 		display: flex;
 		flex-direction: column;
 		justify-content: center;
 		width: 100%;
+		position: relative;
 	}
 	
 	.line {
@@ -235,27 +234,25 @@
 		left: 50%;
 		transform: translate(-50%, -50%);
 		width: 100%;
-		max-width: 300px;
+		max-width: 250px;
 		pointer-events: none;
-		opacity: 0.8;
+		opacity: 0.6;
 		z-index: 5;
 	}
 
 	.loader-track {
-		height: 4px;
+		height: 2px;
 		background: rgba(255, 255, 255, 0.05);
 		border-radius: 10px;
 		overflow: hidden;
-		box-shadow: inset 0 1px 3px rgba(0,0,0,0.2);
 	}
 
 	.loader-bar {
 		height: 100%;
-		background: linear-gradient(90deg, #444, #888, #444);
+		background: linear-gradient(90deg, #444, #fff, #444);
 		background-size: 200% 100%;
 		animation: shimmer 2s infinite linear;
 		border-radius: 10px;
-		box-shadow: 0 0 15px rgba(255,255,255,0.1);
 	}
 
 	@keyframes shimmer {

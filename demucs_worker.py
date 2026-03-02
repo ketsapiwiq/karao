@@ -79,7 +79,8 @@ class DemucsWorker:
                 if i != vocals_idx:
                     no_vocals += stem
             
-            out_path = os.path.join(output_dir, "htdemucs", taskId)
+            # Match the API structure: DATA_DIR/separated/MODEL_NAME/taskId
+            out_path = os.path.join(output_dir, "separated", MODEL_NAME, taskId)
             os.makedirs(out_path, exist_ok=True)
             
             vocals_file = os.path.join(out_path, "vocals.mp3")
@@ -110,7 +111,7 @@ class DemucsWorker:
             
         server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         server.bind(SOCKET_PATH)
-        server.listen(1)
+        server.listen(10)
         server.settimeout(5) # Allow periodic check of self.running
         
         print(f"[worker] Listening on {SOCKET_PATH}")

@@ -21,8 +21,13 @@ ENV PATH="/root/.bun/bin:${PATH}"
 WORKDIR /app
 
 # Demucs and other python deps
-# We use the pre-installed torch from the ROCm image
-RUN pip3 install --no-cache-dir yt-dlp demucs
+# We use the pre-installed torch from the ROCm image but force the index 
+# for any sub-dependencies to ensure they remain ROCm-compatible and don't pull NVIDIA versions.
+RUN pip3 install --no-cache-dir --index-url https://download.pytorch.org/whl/rocm6.0 \
+    yt-dlp \
+    demucs \
+    torchaudio \
+    && pip3 uninstall -y torchcodec || true
 
 COPY package*.json ./
 RUN bun install

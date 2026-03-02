@@ -4,21 +4,39 @@
   let query = $state("");
   let results = $state<any[]>([]);
   let loading = $state(false);
+  let page = $state(1);
+  let hasMore = $state(false);
+  let hasSearched = $state(false);
 
-  async function search() {
+  async function search(reset = true) {
     if (!query.trim()) return;
     loading = true;
-    results = [];
+    if (reset) {
+      results = [];
+      page = 1;
+      hasSearched = true;
+    }
     try {
       const res = await fetch(
-        `/api/search-lyrics?q=${encodeURIComponent(query)}`,
+        `/api/search-lyrics?q=${encodeURIComponent(query)}&page=${page}&limit=50`,
       );
       const data = await res.json();
-      results = data.results || [];
+      const newResults = data.results || [];
+      if (reset) {
+        results = newResults;
+      } else {
+        results = [...results, ...newResults];
+      }
+      hasMore = newResults.length === 50;
     } catch (e) {
       console.error(e);
     }
     loading = false;
+  }
+
+  function loadMore() {
+    page += 1;
+    search(false);
   }
 
   function selectTrack(track: any) {
@@ -68,6 +86,18 @@
         </li>
       {/each}
     </ul>
+    {#if hasMore}
+      <div class="pagination">
+        <button onclick={loadMore} disabled={loading}>
+          {loading ? "Loading more..." : "Load more results"}
+        </button>
+      </div>
+    {/if}
+  {:else if hasSearched && !loading}
+    <div class="no-results">
+      <p>No synced lyrics found for "{query}".</p>
+      <p class="small">Try different keywords or check the spelling.</p>
+    </div>
   {/if}
 </div>
 
@@ -94,7 +124,7 @@
   .search {
     display: flex;
     gap: 0.5rem;
-    margin-bottom: 1rem;
+    margin-bottom: 2rem;
   }
 
   input {
@@ -120,6 +150,7 @@
     border: 1px solid #444;
     color: #eee;
     border-radius: 4px;
+    transition: background 0.2s;
   }
 
   button:hover:not(:disabled) {
@@ -137,12 +168,13 @@
   }
 
   .results li {
-    padding: 0.75rem;
+    padding: 1rem;
     cursor: pointer;
-    border-bottom: 1px solid #222;
+    border-bottom: 1px solid #1a1a1a;
     display: flex;
-    gap: 0.5rem;
+    gap: 1rem;
     align-items: center;
+    transition: background 0.2s;
   }
 
   .results li:hover {
@@ -151,24 +183,50 @@
 
   .artist {
     color: #888;
+    width: 200px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
   .title {
-    font-weight: bold;
+    font-weight: 500;
+    flex: 1;
   }
   .duration {
-    margin-left: auto;
     color: #555;
+    font-variant-numeric: tabular-nums;
   }
 
   .permalink {
     text-decoration: none;
     font-size: 0.8rem;
     padding: 0 0.5rem;
-    color: #444;
+    color: #333;
     transition: color 0.2s;
   }
 
   .permalink:hover {
-    color: #888;
+    color: #666;
+  }
+
+  .no-results {
+    text-align: center;
+    padding: 4rem 2rem;
+    color: #666;
+  }
+
+  .no-results p {
+    margin: 0.5rem 0;
+  }
+
+  .no-results .small {
+    font-size: 0.9rem;
+    opacity: 0.7;
+  }
+
+  .pagination {
+    display: flex;
+    justify-content: center;
+    padding: 2rem 0;
   }
 </style>

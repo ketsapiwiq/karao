@@ -1,29 +1,30 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
 
-	let { lyrics, audioSrc, videoSrc = "", enableVideo = true, trackName = "" } = $props<{ 
-		lyrics: string; 
-		audioSrc: string; 
-		videoSrc?: string;
-		enableVideo?: boolean;
-		trackName?: string 
-	}>();
+let { lyrics, audioSrc, videoSrc = "", enableVideo = true, trackName = "", showAllLyrics = $bindable(false) } = $props<{
+	lyrics: string;
+	audioSrc: string;
+	videoSrc?: string;
+	enableVideo?: boolean;
+	trackName?: string;
+	showAllLyrics?: boolean;
+}>();
 
-	interface LyricLine {
-		time: number;
-		text: string;
-	}
+interface LyricLine {
+	time: number;
+	text: string;
+}
 
-	let lines = $state<LyricLine[]>([]);
-	let currentLineIndex = $state(-1);
-	let audio = $state<HTMLAudioElement | null>(null);
-	let video = $state<HTMLVideoElement | null>(null);
-	let currentTime = $state(0);
-	let offset = $state(0); // Offset in seconds
-	let toast = $state<{ text: string; id: number } | null>(null);
-	let toastTimeout: any;
+let lines = $state<LyricLine[]>([]);
+let currentLineIndex = $state(-1);
+let audio = $state<HTMLAudioElement | null>(null);
+let video = $state<HTMLVideoElement | null>(null);
+let currentTime = $state(0);
+let offset = $state(0); // Offset in seconds
+let toast = $state<{ text: string; id: number } | null>(null);
+let toastTimeout: any;
 
-	function showToast(text: string) {
+function showToast(text: string) {
 		if (toastTimeout) clearTimeout(toastTimeout);
 		toast = { text, id: Date.now() };
 		toastTimeout = setTimeout(() => {
@@ -133,11 +134,15 @@
 		window.removeEventListener('keydown', handleKeydown);
 	});
 
-	let displayLines = $derived([
-		lines[currentLineIndex - 1] || null,
-		lines[currentLineIndex] || null,
-		lines[currentLineIndex + 1] || null
-	]);
+	let displayLines = $derived(
+		showAllLyrics
+			? lines
+			: [
+					lines[currentLineIndex - 1] || null,
+					lines[currentLineIndex] || null,
+					lines[currentLineIndex + 1] || null
+				]
+	);
 
 	// Calculate progress for the initial buildup bar
 	let showLoadingBar = $derived.by(() => {
@@ -163,11 +168,11 @@
 
 <div class="karaoke">
 	{#if videoSrc && enableVideo}
-		<video 
-			class="bg-video" 
-			src={videoSrc} 
-			muted 
-			playsinline 
+		<video
+			class="bg-video"
+			src={videoSrc}
+			muted
+			playsinline
 			loop
 		></video>
 		<div class="overlay"></div>
@@ -175,8 +180,8 @@
 
 	<audio controls src={audioSrc}></audio>
 	
-	<div class="lyrics-display">
-		{#if showLoadingBar}
+	<div class="lyrics-display" class:show-all={showAllLyrics}>
+		{#if showLoadingBar && !showAllLyrics}
 			<div class="break-indicator">
 				<div class="loader-track">
 					<div class="loader-bar" style="width: {loadingProgress * 100}%"></div>
@@ -184,15 +189,25 @@
 			</div>
 		{/if}
 
-		{#each displayLines as line, i}
-			{#if line}
-				<p class="line {i === 1 ? 'current' : ''}">
-					{line.text}
-				</p>
-			{:else}
-				<p class="line empty">&nbsp;</p>
-			{/if}
-		{/each}
+		{#if showAllLyrics}
+			<div class="lyrics-scroll-container">
+				{#each displayLines as line, i}
+					<p class="line {i === currentLineIndex ? 'current' : ''}">
+						{line.text}
+					</p>
+				{/each}
+			</div>
+		{:else}
+			{#each displayLines as line, i}
+				{#if line}
+					<p class="line {i === 1 ? 'current' : ''}">
+						{line.text}
+					</p>
+				{:else}
+					<p class="line empty">&nbsp;</p>
+				{/if}
+			{/each}
+		{/if}
 	</div>
 
 	{#if toast}
@@ -387,5 +402,53 @@
 	.sync-controls button.reset {
 		margin-left: 0.5rem;
 		background: #1a1a2e;
+	}
+
+	.lyrics-display.show-all {
+		min-height: 400px;
+		max-height: 500px;
+		overflow: hidden;
+	}
+
+	.lyrics-scroll-container {
+		max-height: 450px;
+		overflow-y: auto;
+		padding-right: 1rem;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+	}
+
+	.lyrics-scroll-container::-webkit-scrollbar {
+		width: 6px;
+	}
+
+	.lyrics-scroll-container::-webkit-scrollbar-track {
+		background: rgba(255, 255, 255, 0.05);
+		border-radius: 3px;
+	}
+
+	.lyrics-scroll-container::-webkit-scrollbar-thumb {
+		background: #444;
+		border-radius: 3px;
+	}
+
+	.lyrics-scroll-container::-webkit-scrollbar-thumb:hover {
+		background: #666;
+	}
+
+	.lyrics-scroll-container .line {
+		font-size: 1.5rem;
+		margin: 0.75rem 0;
+		color: #ccc;
+		opacity: 0.6;
+		transition: all 0.3s ease;
+	}
+
+	.lyrics-scroll-container .line.current {
+		color: #fff;
+		opacity: 1;
+		font-size: 2rem;
+		font-weight: bold;
 	}
 </style>

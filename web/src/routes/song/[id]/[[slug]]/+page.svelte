@@ -3,9 +3,12 @@
   import { onMount } from "svelte";
 
   let { data } = $props();
-  let { track } = data;
+  let track = $derived(data.track);
 
-  let lyrics = $state(track.synced_lyrics || "");
+  let lyrics = $state("");
+  $effect(() => {
+    lyrics = track.synced_lyrics || "";
+  });
   let preparing = $state(false);
   let currentTask = $state<any>(null);
   let instrumentalUrl = $state("");
@@ -14,6 +17,7 @@
   let errorMsg = $state("");
   let showMenu = $state(false);
   let enableVideo = $state(true);
+let showAllLyrics = $state(false);
 
   onMount(() => {
     const savedVideoPref = localStorage.getItem("enableVideo");
@@ -121,21 +125,25 @@
                   <button onclick={() => startKaraoke(undefined, false, true)}>Use Original Audio</button>
                   <button onclick={() => startKaraoke(undefined, true)}>Force Redownload</button>
                   <hr style="border: 0; border-top: 1px solid #333; margin: 0.5rem 0;" />
-                  <button onclick={toggleVideo}>
-                    {enableVideo ? 'Disable' : 'Enable'} Video Background
-                  </button>
+<button onclick={() => { showAllLyrics = !showAllLyrics; showMenu = false; }}>
+  {showAllLyrics ? 'Hide' : 'Show'} All Lyrics
+</button>
+<button onclick={toggleVideo}>
+  {enableVideo ? 'Disable' : 'Enable'} Video Background
+</button>
                 </div>
               {/if}    </div>
   </div>
 
   {#if showPlayer}
-    <KaraokePlayer 
-      {lyrics} 
-      audioSrc={instrumentalUrl} 
-      videoSrc={videoUrl}
-      enableVideo={enableVideo}
-      trackName={track.artist_name + " - " + track.name} 
-    />
+<KaraokePlayer
+  {lyrics}
+  audioSrc={instrumentalUrl}
+  videoSrc={videoUrl}
+  enableVideo={enableVideo}
+  trackName={track.artist_name + " - " + track.name}
+  bind:showAllLyrics
+/>
   {:else}
     <div class="selected">
       <h1>{track.artist_name} - {track.name}</h1>

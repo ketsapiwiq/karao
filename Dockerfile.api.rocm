@@ -7,30 +7,16 @@ ENV DEBIAN_FRONTEND=noninteractive
 ENV HSA_OVERRIDE_GFX_VERSION=10.3.0
 
 RUN apt-get update && apt-get install -y \
-    curl \
-    unzip \
     ffmpeg \
-    nodejs \
     && rm -rf /var/lib/apt/lists/*
-
-# Install Bun
-RUN curl -fsSL https://bun.sh/install | bash
-ENV PATH="/root/.bun/bin:${PATH}"
 
 WORKDIR /app
 
-# Install ONLY the missing dependencies globally using the system python.
-# We use --break-system-packages (or just pip install since we are in a container)
-# to add demucs and yt-dlp to the existing ROCm-enabled environment.
 RUN python3 -m pip install --upgrade pip && \
-    python3 -m pip install --no-cache-dir yt-dlp demucs
+    python3 -m pip install --no-cache-dir yt-dlp demucs fastapi uvicorn[standard]
 
-COPY package*.json ./
-RUN bun install
-
-COPY api-server.ts demucs_worker.py ./
+COPY api_server.py demucs_worker.py ./
 
 EXPOSE 3001
 
-# The worker and api should use the global python3
-CMD ["bun", "run", "api-server.ts"]
+CMD ["python3", "api_server.py"]

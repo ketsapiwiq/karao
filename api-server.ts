@@ -3,7 +3,7 @@ import { spawn } from 'child_process';
 import { mkdir, access, readFile, stat, rm } from 'fs/promises';
 import path from 'path';
 
-const DB_PATH = process.env.LRCLIB_DB || '/mnt/gloubinours2/lrclib-db-dump-20260122T091251Z.sqlite3';
+const DB_PATH = process.env.LRCLIB_DB || '/lrclib.sqlite3';
 const DATA_DIR = process.env.DATA_DIR || '/data';
 const PORT = parseInt(process.env.PORT || '3001', 10);
 

@@ -1,12 +1,13 @@
 services:
   api:
+    image: karao-api:rocm
     build:
       context: .
       dockerfile: Dockerfile.api.rocm
     ports:
       - "3011:3001"
     volumes:
-      - /mnt/gloubinours2:/mnt/gloubinours2:ro
+      - /mnt/gloubinours2/lrclib-db-dump-20260122T091251Z.sqlite3:/lrclib.sqlite3
       - data:/data
     # Required for ROCm/GPU access
     devices:
@@ -14,7 +15,7 @@ services:
       - "/dev/dri:/dev/dri"
     group_add:
       - video
-      - render
+    #   - render
     security_opt:
       - seccomp:unconfined
     environment:
@@ -25,6 +26,7 @@ services:
     restart: unless-stopped
 
   web:
+    image: karao-api:rocm
     build:
       context: ./web
       dockerfile: Dockerfile
@@ -42,4 +44,4 @@ volumes:
 
 networks:
   default:
-    name: karaoke
+    name: karao

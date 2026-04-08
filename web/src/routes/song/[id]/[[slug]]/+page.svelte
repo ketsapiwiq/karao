@@ -303,7 +303,6 @@ let showAllLyrics = $state(false);
   }
 
   .progress-container {
-    width: 100%;
     background: #1a1a1a;
     padding: 1rem;
     border-radius: 4px;

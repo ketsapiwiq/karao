@@ -19,14 +19,14 @@ services:
     security_opt:
       - seccomp:unconfined
     environment:
-      - LRCLIB_DB=/mnt/gloubinours2/lrclib-db-dump-20260122T091251Z.sqlite3
+      - LRCLIB_DB=/lrclib.sqlite3
       - DATA_DIR=/data
       - PORT=3001
       - HSA_OVERRIDE_GFX_VERSION=10.3.0
     restart: unless-stopped
 
   web:
-    image: karao-api:rocm
+    image: karao-web
     build:
       context: ./web
       dockerfile: Dockerfile

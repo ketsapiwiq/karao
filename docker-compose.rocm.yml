@@ -8,7 +8,7 @@ services:
       - "3011:3001"
     volumes:
       - /mnt/gloubinours2/lrclib-db-dump-20260122T091251Z.sqlite3:/lrclib.sqlite3
-      - data:/data
+      - /mnt/gloubinours2/karao_data:/data
     # Required for ROCm/GPU access
     devices:
       - "/dev/kfd:/dev/kfd"
@@ -38,9 +38,6 @@ services:
     depends_on:
       - api
     restart: unless-stopped
-
-volumes:
-  data:
 
 networks:
   default:
